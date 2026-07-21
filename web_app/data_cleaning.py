@@ -11,6 +11,8 @@ import json
 import config as utils
 import traceback
 import warnings
+import cleaning_code_generator
+import schema_analyzer
 
 # 忽略 Pandas 的一些切片警告
 warnings.filterwarnings('ignore')
@@ -488,6 +490,111 @@ def render_data_cleaning(df_raw, t, id_col=None):
             df['Leveling_Mode'] = df[level_col].astype(str).apply(lambda x: 1 if '激光' in x or 'Laser' in x else 0)
         pass_rate = float(pd.Series(df.get('Label_Pass')).mean()) if 'Label_Pass' in df.columns else np.nan
         return df, {'rows': len(df), 'pass_rate': pass_rate}
+
+    # ==========================================
+    # LLM 通用智能清洗 UI（新增）
+    # ==========================================
+    def _render_llm_cleaning(df_raw, t, df_active):
+        st.subheader("✨ 通用智能清洗")
+
+        schema = st.session_state.get('data_schema')
+        if schema is None:
+            st.warning("⚠️ 尚未完成数据 Schema 分析，请先上传数据等待分析完成。")
+            return
+
+        st.success(f"📋 Schema 已就绪：{len(schema.columns)} 列，目标列: {schema.target_column or '未识别'}")
+
+        # 展示schema概览
+        with st.expander("查看数据 Schema 详情"):
+            overview = []
+            for col in schema.columns:
+                overview.append({
+                    "列名": col.raw_name,
+                    "角色": col.role,
+                    "类型": col.dtype,
+                    "置信度": f"{col.confidence:.0%}"
+                })
+            st.dataframe(pd.DataFrame(overview), use_container_width=True, hide_index=True)
+
+        # 清洗按钮
+        col1, col2 = st.columns([1, 3])
+        run_clean = False
+        with col1:
+            run_clean = st.button("🚀 开始通用清洗", type="primary", use_container_width=True)
+
+        if run_clean:
+            with st.spinner("正在执行通用清洗..."):
+                try:
+                    client = utils.get_ai_client()
+                    target_override = schema.target_column
+                    # 如果schema没有识别到目标列，尝试用启发式
+                    if target_override is None:
+                        target_override = cleaning_code_generator._auto_detect_target_column(df_raw)
+
+                    cleaned_df, stats = cleaning_code_generator.run_cleaning_pipeline(
+                        df_raw, schema,
+                        target_column_override=target_override
+                    )
+
+                    # 保存到 session_state
+                    st.session_state['df_clean'] = cleaned_df
+                    st.session_state['semiconductor_processor_state'] = {
+                        'initialized': True,
+                        'headers_cleaned': True,
+                        'regex_processed': True,
+                        'features_calculated': True,
+                        'labels_processed': True,
+                        'final_saved': True
+                    }
+
+                    st.success("✅ 通用清洗完成！")
+
+                    # 展示清洗统计
+                    stats_text = cleaning_code_generator.format_cleaning_stats(stats)
+                    st.info(stats_text)
+
+                    # 数据预览
+                    st.markdown("#### 清洗后数据预览")
+                    df_display = cleaned_df.head(50).copy()
+                    if df_display.columns.duplicated().any():
+                        cols = pd.Series(df_display.columns)
+                        for dup in cols[cols.duplicated()].unique():
+                            cols[cols[cols == dup].index.values.tolist()] = [
+                                dup if i == 0 else f"{dup}_{i}" for i in range(sum(cols == dup))
+                            ]
+                        df_display.columns = cols
+                    st.dataframe(df_display, use_container_width=True, height=420)
+
+                    # 目标列分布
+                    target = target_override or schema.target_column
+                    if target and target in cleaned_df.columns:
+                        st.markdown("#### 目标列分布")
+                        col1_val, col2_val = st.columns(2)
+                        pass_count = int((cleaned_df[target] == 1).sum())
+                        fail_count = int((cleaned_df[target] == 0).sum())
+                        with col1_val:
+                            st.metric("良品 (Pass)", pass_count)
+                        with col2_val:
+                            st.metric("不良 (Fail)", fail_count)
+
+                    # 下载按钮
+                    csv_data = cleaned_df.to_csv(index=False, encoding='utf-8-sig')
+                    st.download_button(
+                        label="📥 下载清洗后数据",
+                        data=csv_data,
+                        file_name="cleaned_data.csv",
+                        mime="text/csv",
+                        type="primary"
+                    )
+
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"清洗失败: {e}")
+                    import traceback as tb
+                    st.code(tb.format_exc())
+
+    # ==========================================
     
     # 0. 初始化
     if 'df_clean' not in st.session_state:
@@ -566,7 +673,22 @@ def render_data_cleaning(df_raw, t, id_col=None):
     # --- 方法论说明 ---
     with st.expander(t.get('method_expander_title'), expanded=False):
         st.info(t.get('method_explanation'))
-    
+
+    # ==========================================
+    # 清洗模式选择（传统 vs 通用智能清洗）
+    # ==========================================
+    clean_mode = st.radio(
+        "清洗模式",
+        ["🔧 传统半导体制程清洗", "✨ 通用智能清洗"],
+        index=0,
+        horizontal=True,
+        key="clean_mode_selector"
+    )
+
+    if clean_mode == "✨ 通用智能清洗":
+        _render_llm_cleaning(df_raw, t, df_active)
+        return
+
     st.subheader(t.get('clean_title'))
 
     # --- 自动清洗按钮 ---
