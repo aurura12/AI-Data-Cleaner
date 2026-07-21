@@ -1,0 +1,15 @@
+streamlit
+pandas
+numpy
+matplotlib
+seaborn
+scikit-learn
+xgboost
+shap
+ollama
+openai
+requests
+beautifulsoup4
+reportlab
+openpyxl
+weasyprint

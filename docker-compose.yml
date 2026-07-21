@@ -1,0 +1,69 @@
+# AI 半导体生产数据分析平台 - Docker Compose
+#
+# 快速启动 Web 界面:
+#   cp .env.example .env   # 填写 API Key
+#   docker compose up -d web
+#   浏览器访问 http://localhost:8502
+#
+# 一键批处理分析:
+#   docker compose run --rm pipeline
+#
+# 代码路径（容器内）: /app
+# 数据输入:           /app/data/input/
+# 分析输出:           /app/output/
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-semiconductor-production:latest
+    container_name: ai-semiconductor-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8502}:8502"
+    env_file:
+      - .env
+    environment:
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      DASHSCOPE_API_BASE: ${DASHSCOPE_API_BASE:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      DASHSCOPE_TEXT_MODEL: ${DASHSCOPE_TEXT_MODEL:-qwen-plus}
+      DASHSCOPE_CODER_MODEL: ${DASHSCOPE_CODER_MODEL:-qwen2.5-coder-7b-instruct}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+    volumes:
+      # 数据与输出持久化（推荐）
+      - ./data:/app/data
+      - ./output:/app/output
+      # 开发模式：取消下行注释可热更新代码
+      # - ./web_app:/app/web_app
+      # - ./analysis_pipeline:/app/analysis_pipeline
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8502/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-semiconductor-production:latest
+    container_name: ai-semiconductor-pipeline
+    profiles:
+      - pipeline
+    env_file:
+      - .env
+    environment:
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      DASHSCOPE_API_BASE: ${DASHSCOPE_API_BASE:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      DASHSCOPE_TEXT_MODEL: ${DASHSCOPE_TEXT_MODEL:-qwen-plus}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["pipeline"]

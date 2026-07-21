@@ -1,0 +1,3 @@
+[server]
+maxUploadSize = 500
+port = 8502
