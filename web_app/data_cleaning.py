@@ -516,6 +516,26 @@ def render_data_cleaning(df_raw, t, id_col=None):
                 })
             st.dataframe(pd.DataFrame(overview), use_container_width=True, hide_index=True)
 
+        # ── LLM增强清洗选项 ──
+        enable_llm = st.checkbox(
+            "🔧 启用LLM增强清洗（处理复杂文本列、复合ID解析等）",
+            value=False,
+            key="llm_enhance_checkbox"
+        )
+
+        # 检测复杂列（如果勾选了LLM增强）
+        detected_complex = []
+        if enable_llm:
+            with st.spinner("正在检测需要增强处理的列..."):
+                detected_complex = cleaning_code_generator.detect_complex_columns(df_raw, schema)
+            if detected_complex:
+                st.info(f"检测到 {len(detected_complex)} 个列需要LLM增强处理:")
+                for cc in detected_complex:
+                    st.caption(f"  - {cc['column']}: {cc['reason']}")
+                    st.caption(f"    样本: {cc['samples'][:3]}")
+            else:
+                st.success("未检测到需要LLM增强处理的列")
+
         # 清洗按钮
         col1, col2 = st.columns([1, 3])
         run_clean = False
@@ -531,10 +551,23 @@ def render_data_cleaning(df_raw, t, id_col=None):
                     if target_override is None:
                         target_override = cleaning_code_generator._auto_detect_target_column(df_raw)
 
+                    coder_model = utils.CODER_MODEL
+                    text_model = utils.TEXT_MODEL
+
                     cleaned_df, stats = cleaning_code_generator.run_cleaning_pipeline(
                         df_raw, schema,
+                        enable_llm_enhanced=enable_llm,
+                        client=client if enable_llm else None,
+                        model=text_model,
+                        coder_model=coder_model,
                         target_column_override=target_override
                     )
+
+                    # Layer 2: 如果有生成的代码，展示给用户
+                    l2_data = stats.get('layer2', {})
+                    if l2_data.get('code'):
+                        with st.expander("🔍 查看LLM生成的清洗代码"):
+                            st.code(l2_data['code'], language='python')
 
                     # 保存到 session_state
                     st.session_state['df_clean'] = cleaned_df
