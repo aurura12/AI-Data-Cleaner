@@ -9,3 +9,6 @@ output/
 data/
 *.log
 nohup.out
+.env
+.vscode/
+web_app/cleaned_chip_data_final.csv

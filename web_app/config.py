@@ -8,6 +8,10 @@ import re
 import time
 import sys
 from openai import OpenAI
+from dotenv import load_dotenv
+
+# 加载 .env 文件（支持 API Key、模型配置等）
+load_dotenv()
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from project_paths import ROOT_DIR, OUTPUT_DIR, CLEANED_DATA_FILE, FONT_FILE

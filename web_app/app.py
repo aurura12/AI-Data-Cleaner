@@ -8,6 +8,7 @@ import data_cleaning as analysis
 import descriptive_stats
 import ai_chat as ai_analysis
 import report_export as full_report
+import schema_analyzer
 
 # 1. 语言配置和主题设置
 st.set_page_config(page_title="AI Semiconductor Production Assistant", layout="wide", initial_sidebar_state="expanded")
@@ -387,26 +388,97 @@ df = utils.load_data_sidebar(t)
 df_active = utils.get_active_analysis_df(df)
 
 # ==========================================
-# 4. 关键修改: 变量映射设置 (适配不同列名)
+# 3.5 Schema 自动分析（由LLM驱动）
+# ==========================================
+# 检测数据是否变化（通过列名+形状hash，避免每次rerun的id变化触发重新分析）
+data_fingerprint = f"{df.shape[0]}_{df.shape[1]}_{'_'.join(df.columns)}" if df is not None else None
+
+if df is not None:
+    # 如果数据指纹变了，重新分析Schema
+    if data_fingerprint != st.session_state.get('data_fingerprint'):
+        if 'data_schema' in st.session_state:
+            del st.session_state['data_schema']
+        st.session_state['data_fingerprint'] = data_fingerprint
+    
+    if 'data_schema' not in st.session_state:
+        with st.spinner("🤖 AI 正在分析数据结构，识别列含义..."):
+            try:
+                schema = schema_analyzer.analyze_schema(df, client, utils.TEXT_MODEL)
+                st.session_state['data_schema'] = schema
+            except Exception as e:
+                st.warning(f"LLM分析失败，使用规则推断: {e}")
+                schema = schema_analyzer._fallback_schema(df)
+                st.session_state['data_schema'] = schema
+
+# 展示Schema分析结果（可折叠展开）
+if 'data_schema' in st.session_state and df is not None:
+    schema = st.session_state['data_schema']
+    with st.sidebar.expander("📋 数据结构识别结果", expanded=False):
+        st.caption(f"识别到 {len(schema.columns)} 列，{schema.raw_data_shape[0]} 行")
+        
+        # 目标列展示
+        if schema.target_column:
+            st.success(f"🎯 目标列: **{schema.target_column}**")
+            if schema.target_mapping:
+                mapping_text = ", ".join([f"{k}→{v}" for k, v in schema.target_mapping.items()])
+                st.caption(f"值映射: {mapping_text}")
+        else:
+            st.warning("未识别到目标列")
+        
+        # 列角色总览表格
+        overview = []
+        for col in schema.columns:
+            overview.append({
+                "列名": col.raw_name,
+                "角色": col.role,
+                "类型": col.dtype,
+                "置信度": f"{col.confidence:.0%}",
+                "单位": col.physical_unit or "-"
+            })
+        st.dataframe(pd.DataFrame(overview), use_container_width=True, hide_index=True)
+        
+        # 如果有不确定项，提供用户确认
+        uncertain = schema.get_uncertain_columns()
+        if uncertain:
+            st.warning(f"以下 {len(uncertain)} 列识别置信度较低，可在后续步骤中手动调整")
+        
+        # 重新分析按钮
+        if st.button("🔄 重新分析", key="rerun_schema"):
+            for key in ['data_schema', 'data_fingerprint']:
+                st.session_state.pop(key, None)
+            st.rerun()
+
+
+# ==========================================
+# 4. 变量映射设置 (优先使用Schema，回退到规则)
 # ==========================================
 target_col = None
 id_col = None
 
 if df is not None:
-    columns = list(df.columns)
-
-    # 智能预选（不展示侧边栏设置）
-    possible_targets = ['是否患冠心病', 'HeartDisease', 'Target', 'outcome', 'Diagnosis']
-    default_target_index = len(columns) - 1
-    for pt in possible_targets:
-        if pt in columns:
-            default_target_index = columns.index(pt)
+    schema = st.session_state.get('data_schema')
+    if schema and schema.target_column:
+        # 使用 Schema 自动识别结果
+        target_col = schema.target_column
+        id_col = schema.id_column
+    else:
+        # 回退到关键词匹配
+        columns = list(df.columns)
+        possible_targets = ['压连', '结果', '状态', '良率', 'class', 'label', 'target',
+                            'Pass', 'Fail', 'defect', 'quality', 'grade', 'outcome']
+        default_target_index = len(columns) - 1
+        for pt in possible_targets:
+            for col in columns:
+                if pt.lower() in col.lower():
+                    default_target_index = columns.index(col)
+                    break
+            else:
+                continue
             break
-    target_col = columns[default_target_index] if columns else None
+        target_col = columns[default_target_index] if columns else None
 
-    # ID 列自动选择（可为空）
-    possible_ids = ['ID', 'PatientID', 'No', '序号']
-    id_col = next((c for c in columns if c in possible_ids), None)
+        possible_ids = ['编号', '芯片号', 'ID', 'id', 'PatientID', 'No', '序号', 'serial']
+        id_col = next((c for c in columns if c in possible_ids), None)
 
 # ==========================================
 
