@@ -234,6 +234,17 @@ st.markdown(
   .stFileUploader div[data-testid="stFileUploaderDropzone"] * {{
     color: {_fg} !important;
   }}
+  .stFileUploader div[data-testid="stFileUploaderDropzone"] small {{
+    color: {_fg} !important;
+  }}
+  .stFileUploader div[data-testid="stFileUploaderDropzone"] button {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+    border-color: {_border} !important;
+  }}
+  .stFileUploader div[data-testid="stFileUploaderDropzone"] button:hover {{
+    border-color: {_fg} !important;
+  }}
   .stFileUploader div[data-testid="stFileUploaderFileName"] {{
     background-color: {_card} !important;
     color: {_fg} !important;
@@ -288,25 +299,48 @@ st.markdown(
   div[data-testid="stToolbar"] button:hover {{
     background-color: {_border} !important;
   }}
-  /* 工具栏弹出菜单 */
-  div[data-testid="stStatusWidget"] > div > div > div {{
-    background-color: {_card} !important;
-    color: {_fg} !important;
+  /* 工具栏状态/菜单弹出层 */
+  div[data-testid="stStatusWidget"] {{
+    background-color: transparent !important;
   }}
-  div[role="menu"] {{
+  /* 三点菜单弹出层 - 覆盖所有可能的class名 */
+  div[data-testid="stStatusWidget"] + div[role="menu"],
+  [role="menu"] {{
     background-color: {_card} !important;
     border: 1px solid {_border} !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
   }}
-  div[role="menu"] * {{
+  [role="menu"] * {{
     color: {_fg} !important;
   }}
-  div[role="menu"] > div:hover {{
+  [role="menu"] > div, [role="menu"] li, [role="menuitem"] {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  [role="menu"] > div:hover, [role="menu"] li:hover, [role="menuitem"]:hover {{
     background-color: {_border} !important;
   }}
-  /* 弹出菜单（Streamlit内部） */
-  .st-emotion-cache-1gulkj5, 
-  .st-emotion-cache-1r6slb0,
-  .st-emotion-cache-1aej7k8 {{
+  /* 菜单分隔线 */
+  [role="menu"] hr, [role="separator"] {{
+    border-color: {_border} !important;
+  }}
+  /* 所有弹出层/浮层 */
+  [data-testid^="stPopover"], 
+  [data-testid="stPopoverBody"],
+  [role="dialog"],
+  [data-testid="stDialog"] {{
+    background-color: {_card} !important;
+    border-color: {_border} !important;
+    color: {_fg} !important;
+  }}
+  [data-testid^="stPopover"] *,
+  [role="dialog"] *,
+  [data-testid="stDialog"] * {{
+    color: {_fg} !important;
+  }}
+  /* 右键菜单 */
+  .stMainMenu {{
     background-color: {_card} !important;
     color: {_fg} !important;
   }}
@@ -399,6 +433,37 @@ st.markdown(
   /* 确保所有文本元素可见 */
   p, span, div, li, td, th {{
     color: {_fg} !important;
+  }}
+
+  /* 三点菜单 - 更精确的Streamlit 1.28+ 结构 */
+  button[title="View main menu"] {{
+    color: {_fg} !important;
+  }}
+
+  /* 通用：所有浮层容器（按 data-testid 匹配） */
+  [data-testid$="menu"], [data-testid$="Menu"],
+  [data-testid$="popover"], [data-testid$="Popover"],
+  [data-testid$="overlay"], [data-testid$="Overlay"],
+  [data-testid$="dialog"], [data-testid$="Dialog"] {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+    border-color: {_border} !important;
+  }}
+  [data-testid$="menu"] *, [data-testid$="Menu"] *,
+  [data-testid$="popover"] *, [data-testid$="Popover"] *,
+  [data-testid$="overlay"] *, [data-testid$="Overlay"] *,
+  [data-testid$="dialog"] *, [data-testid$="Dialog"] * {{
+    color: {_fg} !important;
+  }}
+
+  /* 文件上传器内部 "Browse files" 按钮 */
+  .stFileUploader button {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+    border: 1px solid {_border} !important;
+  }}
+  .stFileUploader button:hover {{
+    border-color: {_fg} !important;
   }}
   /* 修复选择框下拉菜单背景 */
   div[data-baseweb="select"] > div {{
