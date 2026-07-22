@@ -522,7 +522,8 @@ if df is not None:
     with tab3:
     # 只需一行代码调用，传入必要的参数
         ai_analysis.render_ai_dashboard(
-            df_active if df_active is not None else df, t, client, target_col
+            df_active if df_active is not None else df, t, client, target_col,
+            schema=st.session_state.get('data_schema')
         )
     
     with tab_report:

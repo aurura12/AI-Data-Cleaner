@@ -87,7 +87,7 @@ def capture_output(code, local_vars):
         
     return fig, output_capture.getvalue(), exec_error
 
-def render_ai_dashboard(df, t, client, target_col=None):
+def render_ai_dashboard(df, t, client, target_col=None, schema=None):
     # 确保中文字体已注册，并获取推荐字体名称
     font_name = _init_chinese_font()
 
@@ -122,17 +122,78 @@ def render_ai_dashboard(df, t, client, target_col=None):
     if btn_run and user_query:
         
         # --- 第一轮：让 AI 写代码 (Coder) ---
-        # --- Domain Knowledge Injection ---
-        domain_context = (
-            "Domain Context & Column Meanings:\n"
-            "- **Target Variable**: 'Label_Pass' (1=Pass/Good, 0=Fail/Bad). Use this to analyze yield/quality.\n"
-            "- **Key Process Parameters (Inputs)**: 'Force_kg' (Bonding Force), 'Equipment_Temp' (Temp), 'Vacuum_Level', 'Leveling_Mode' (Laser vs Cross).\n"
-            "- **Key Physical Measurements**: 'Total_Indium_Height', 'Indium_Taper_Zscore', '铟柱上底(CD)' (Upper Diameter), '铟柱下底(CD)' (Lower Diameter).\n"
-            "- **Time/Batch**: 'Process_Date', 'Time_Seq_Day', 'Batch_ID', 'Wafer_Index'.\n"
-            "- **Analysis Tips**: \n"
-            "  - To analyze 'Yield' or 'Failure', compare Process Parameters distribution between Pass(1) and Fail(0) groups (e.g., Boxplots).\n"
-            "  - 'Leveling_Mode' is categorical. Use Bar charts to compare pass rates between modes.\n"
-        )
+        # --- Domain Knowledge Injection (动态构建) ---
+        if schema and schema.columns:
+            # 从 schema 动态构建
+            target_name = schema.get_target_column_name()
+            target_desc = ""
+            if target_name:
+                pass_label = schema.pass_label or 'Pass'
+                fail_label = schema.fail_label or 'Fail'
+                target_desc = f"'- **Target Variable**: '{target_name}' (1={pass_label}/Good, 0={fail_label}/Bad). Use this to analyze yield/quality.\n"
+
+            numeric_cols = []
+            cat_cols = []
+            for c in schema.columns:
+                if c.role == 'feature' and c.dtype == 'numeric':
+                    unit = f" ({c.physical_unit})" if c.physical_unit else ""
+                    numeric_cols.append(f"'{c.raw_name}'{unit}")
+                elif c.role == 'feature' and c.dtype == 'categorical':
+                    cat_cols.append(f"'{c.raw_name}'")
+
+            domain_context = (
+                "Domain Context & Column Meanings:\n"
+                f"{target_desc}"
+            )
+            if numeric_cols:
+                domain_context += f"- **Numeric Features**: {', '.join(numeric_cols[:10])}.\n"
+            if cat_cols:
+                domain_context += f"- **Categorical Features**: {', '.join(cat_cols[:10])}.\n"
+            if len(numeric_cols) > 10 or len(cat_cols) > 10:
+                domain_context += f"- ... and other columns.\n"
+            domain_context += (
+                "- **Analysis Tips**: \n"
+                "  - To analyze 'Yield' or 'Failure', compare feature distributions between Pass/Fail groups (e.g., Boxplots).\n"
+                "  - For categorical features, use Bar charts to compare pass rates.\n"
+            )
+
+            # 动态构建编码规则
+            target_rules = ""
+            if target_name:
+                target_rules = (
+                    f"   - **Target Variable**: '{target_name}' is numeric (1=Pass, 0=Fail). "
+                    f"If using it as a grouping variable (hue), you MUST map it to strings first: "
+                    f"`df['Status'] = df['{target_name}'].map({{1:'Pass', 0:'Fail'}})`.\n"
+                )
+            numeric_safety = ""
+            if numeric_cols:
+                safe_cols = [c.split("'")[1] for c in numeric_cols[:5]]
+                numeric_safety = (
+                    f"   - **Numeric Safety**: Ensure parameters ({', '.join(safe_cols)}) "
+                    f"are float. Use `pd.to_numeric(df['col'], errors='coerce')` to be safe.\n"
+                )
+        else:
+            # 无 schema 时回退到硬编码半导体上下文
+            domain_context = (
+                "Domain Context & Column Meanings:\n"
+                "- **Target Variable**: 'Label_Pass' (1=Pass/Good, 0=Fail/Bad). Use this to analyze yield/quality.\n"
+                "- **Key Process Parameters (Inputs)**: 'Force_kg' (Bonding Force), 'Equipment_Temp' (Temp), 'Vacuum_Level', 'Leveling_Mode' (Laser vs Cross).\n"
+                "- **Key Physical Measurements**: 'Total_Indium_Height', 'Indium_Taper_Zscore', '铟柱上底(CD)' (Upper Diameter), '铟柱下底(CD)' (Lower Diameter).\n"
+                "- **Time/Batch**: 'Process_Date', 'Time_Seq_Day', 'Batch_ID', 'Wafer_Index'.\n"
+                "- **Analysis Tips**: \n"
+                "  - To analyze 'Yield' or 'Failure', compare Process Parameters distribution between Pass(1) and Fail(0) groups (e.g., Boxplots).\n"
+                "  - 'Leveling_Mode' is categorical. Use Bar charts to compare pass rates between modes.\n"
+            )
+            target_rules = (
+                "   - **Target Variable**: 'Label_Pass' is numeric (1=Pass, 0=Fail). "
+                "If using it as a grouping variable (hue), you MUST map it to strings first: "
+                "`df['Status'] = df['Label_Pass'].map({{1:'Pass', 0:'Fail'}})`.\n"
+            )
+            numeric_safety = (
+                "   - **Numeric Safety**: Ensure physical parameters ('Equipment_Temp', 'Vacuum_Level', "
+                "'Force_kg', 'Total_Indium_Height', 'Calc_Circuit_Range') are float. "
+                "Use `pd.to_numeric(df['col'], errors='coerce')` to be safe.\n"
+            )
 
         prompt_coder = (
             f"Data columns: {list(df_curr.columns)}\n"
@@ -143,9 +204,9 @@ def render_ai_dashboard(df, t, client, target_col=None):
             f"1. **Environment**: Use `df` variable. Import `seaborn as sns`, `matplotlib.pyplot as plt`.\n"
             f"2. **Style**: Use `sns.set(style='whitegrid', font='{font_name}')` to make it look good and support Chinese.\n"
             f"3. **CRITICAL - DATA PREPARATION**:\n"
-            f"   - **Target Variable**: 'Label_Pass' is numeric (1=Pass, 0=Fail). If using it as a grouping variable (hue), you MUST map it to strings first to avoid np.int64 errors: `df['Status'] = df['Label_Pass'].map({{1:'Pass', 0:'Fail'}})`.\n"
+            f"{target_rules}"
             f"   - **Color Palette**: NEVER use integers as palette keys. ALWAYS use string keys. Example: `palette={{'Pass': 'green', 'Fail': 'red'}}`.\n"
-            f"   - **Numeric Safety**: Ensure physical parameters ('Equipment_Temp', 'Vacuum_Level', 'Force_kg', 'Total_Indium_Height', 'Calc_Circuit_Range') are float. Use `pd.to_numeric(df['col'], errors='coerce')` to be safe.\n"
+            f"{numeric_safety}"
             f"   - **Drop NaNs**: If plotting a specific column, drop NaNs for that column to avoid errors.\n"
 
             f"4. **CRITICAL - AVOID OVERPLOTTING (High Cardinality)**:\n"
