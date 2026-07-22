@@ -31,17 +31,38 @@ if st.session_state.theme == "dark":
     _fg = "#e6edf3"
     _card = "#161b22"
     _border = "#30363d"
+    _accent = "#2f81f7"
 else:
     _bg = "#ffffff"
     _fg = "#0b1220"
     _card = "#ffffff"
     _border = "#e5e7eb"
+    _accent = "#1d4ed8"
 
 st.markdown(
     f"""
 <style>
+  :root {{
+    color-scheme: {'dark' if st.session_state.theme == 'dark' else 'light'};
+    --theme-bg: {_bg};
+    --theme-fg: {_fg};
+    --theme-card: {_card};
+    --theme-border: {_border};
+    --theme-accent: {_accent};
+  }}
+  html, body {{
+    background: {_bg} !important;
+    color: {_fg} !important;
+  }}
   .stApp {{
-    background: {_bg};
+    background: {_bg} !important;
+    color: {_fg} !important;
+    color-scheme: {'dark' if st.session_state.theme == 'dark' else 'light'};
+  }}
+  div[data-testid="stAppViewContainer"],
+  section.main,
+  main {{
+    background: {_bg} !important;
     color: {_fg} !important;
   }}
   .stApp * {{
@@ -116,8 +137,34 @@ st.markdown(
     color: {_fg} !important;
   }}
   /* 按钮 */
-  .stButton > button {{
+  .stButton > button,
+  .stDownloadButton > button {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+    border: 1px solid {_border} !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
+  }}
+  .stButton > button:hover,
+  .stDownloadButton > button:hover {{
+    background-color: {_border} !important;
+    border-color: {_fg} !important;
+  }}
+  .stButton > button[kind="primary"],
+  .stDownloadButton > button[kind="primary"] {{
+    background-color: {_accent} !important;
     color: white !important;
+    border-color: {_accent} !important;
+  }}
+  .stButton > button[kind="primary"]:hover,
+  .stDownloadButton > button[kind="primary"]:hover {{
+    background-color: {_accent} !important;
+    filter: brightness(1.05);
+  }}
+  .stButton > button:focus,
+  .stDownloadButton > button:focus {{
+    outline: 2px solid {_accent} !important;
+    outline-offset: 2px;
   }}
   /* 数据框和表格 */
   .stDataFrame {{
@@ -138,6 +185,15 @@ st.markdown(
   }}
   /* pandas dataframe 表格 */
   div[data-testid="stDataFrame"] table {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  div[data-testid="stDataFrame"],
+  div[data-testid="stDataFrame"] > div,
+  div[data-testid="stDataFrame"] div,
+  div[data-testid="stDataFrame"] [role="grid"],
+  div[data-testid="stDataFrame"] [data-testid="stVirtualizedTable"],
+  div[data-testid="stDataFrame"] canvas {{
     background-color: {_card} !important;
     color: {_fg} !important;
   }}
@@ -230,6 +286,7 @@ st.markdown(
     background-color: {_card} !important;
     border-color: {_border} !important;
     color: {_fg} !important;
+    box-shadow: none !important;
   }}
   .stFileUploader div[data-testid="stFileUploaderDropzone"] * {{
     color: {_fg} !important;
@@ -250,8 +307,26 @@ st.markdown(
     color: {_fg} !important;
     border-color: {_border} !important;
   }}
+  .stFileUploader [data-testid="stFileUploaderDropzoneInstructions"] {{
+    color: {_fg} !important;
+  }}
+  .stFileUploader [data-testid="stFileUploaderDropzoneInstructions"] * {{
+    color: {_fg} !important;
+  }}
+  .stFileUploader [data-testid="stFileUploaderUploadButton"] button {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+    border: 1px solid {_border} !important;
+  }}
+  .stFileUploader [data-testid="stFileUploaderUploadButton"] button:hover {{
+    background-color: {_border} !important;
+  }}
   /* 文件上传侧边栏 */
   section[data-testid="stSidebar"] .stFileUploader > section {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  section[data-testid="stSidebar"] .stFileUploader > section > div {{
     background-color: {_card} !important;
     color: {_fg} !important;
   }}
@@ -259,6 +334,48 @@ st.markdown(
     background-color: {_card} !important;
     border-color: {_border} !important;
     color: {_fg} !important;
+  }}
+  /* 文件上传器 - 通用覆盖所有内部元素背景 */
+  .stFileUploader {{
+    background-color: transparent !important;
+  }}
+  .stFileUploader > div {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  .stFileUploader > div > div {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  .stFileUploader * {{
+    color: {_fg} !important;
+  }}
+  /* 文件上传器成功状态 */
+  .stFileUploader [data-testid="stFileUploaderFileName"] {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+    border-color: {_border} !important;
+  }}
+  .stFileUploader [data-testid="stFileUploaderFileName"] * {{
+    color: {_fg} !important;
+  }}
+  .stFileUploader [data-testid="stFileUploaderFileSize"] {{
+    color: rgba(230, 237, 243, 0.6) !important;
+  }}
+  .stFileUploader [data-testid="stFileUploaderDropzoneInstructions"] {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  .stFileUploader [data-testid="stFileUploaderDropzoneInstructions"] * {{
+    color: {_fg} !important;
+  }}
+  .stFileUploader [data-testid="stFileUploaderUploadButton"] button {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+    border: 1px solid {_border} !important;
+  }}
+  .stFileUploader [data-testid="stFileUploaderUploadButton"] button:hover {{
+    border-color: {_fg} !important;
   }}
   /* 指标卡片 */
   .stMetric {{
@@ -625,6 +742,23 @@ st.markdown(
   }}
   section[data-testid="stSidebar"] .streamlit-expanderContent {{
     background-color: {_card} !important;
+  }}
+  /* 侧边栏警告/成功/信息框 */
+  section[data-testid="stSidebar"] .stAlert,
+  section[data-testid="stSidebar"] .stSuccess,
+  section[data-testid="stSidebar"] .stInfo,
+  section[data-testid="stSidebar"] .stWarning,
+  section[data-testid="stSidebar"] .stError {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+    border-color: {_border} !important;
+  }}
+  section[data-testid="stSidebar"] .stAlert *,
+  section[data-testid="stSidebar"] .stSuccess *,
+  section[data-testid="stSidebar"] .stInfo *,
+  section[data-testid="stSidebar"] .stWarning *,
+  section[data-testid="stSidebar"] .stError * {{
+    color: {_fg} !important;
   }}
   /* 自定义滚动条（暗色） */
   ::-webkit-scrollbar {{
