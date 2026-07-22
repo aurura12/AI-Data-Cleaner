@@ -589,6 +589,9 @@ def render_data_cleaning(df_raw, t, id_col=None):
                     # 数据预览
                     st.markdown("#### 清洗后数据预览")
                     df_display = cleaned_df.head(50).copy()
+                    # category 类型会导致 Glide Data Grid 渲染空白，转回 object
+                    for col in df_display.select_dtypes(include=['category']).columns:
+                        df_display[col] = df_display[col].astype(str)
                     if df_display.columns.duplicated().any():
                         cols = pd.Series(df_display.columns)
                         for dup in cols[cols.duplicated()].unique():

@@ -118,11 +118,11 @@ def layer1_generic_clean(df: pd.DataFrame, schema: DataSchema,
 
         elif col_schema.dtype == 'categorical':
             before_unique = df[col_name].nunique()
-            df[col_name] = df[col_name].astype('category')
+            # 保持为 object 类型（st.dataframe 的 Glide Data Grid 不支持 category dtype）
             type_stats['converted'].append({
                 'column': col_name,
-                'from': 'object',
-                'to': 'category',
+                'from': str(df[col_name].dtype),
+                'to': 'string',
                 'unique_values': before_unique
             })
 
