@@ -218,11 +218,55 @@ st.markdown(
   .stFileUploader > label > div {{
     color: {_fg} !important;
   }}
-  /* 指标 */
-  .stMetric {{
+  .stFileUploader > section {{
+    background-color: {_card} !important;
+    border-color: {_border} !important;
     color: {_fg} !important;
   }}
+  .stFileUploader > section > div {{
+    color: {_fg} !important;
+  }}
+  .stFileUploader div[data-testid="stFileUploaderDropzone"] {{
+    background-color: {_card} !important;
+    border-color: {_border} !important;
+    color: {_fg} !important;
+  }}
+  .stFileUploader div[data-testid="stFileUploaderDropzone"] * {{
+    color: {_fg} !important;
+  }}
+  .stFileUploader div[data-testid="stFileUploaderFileName"] {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+    border-color: {_border} !important;
+  }}
+  /* 文件上传侧边栏 */
+  section[data-testid="stSidebar"] .stFileUploader > section {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  section[data-testid="stSidebar"] .stFileUploader div[data-testid="stFileUploaderDropzone"] {{
+    background-color: {_card} !important;
+    border-color: {_border} !important;
+    color: {_fg} !important;
+  }}
+  /* 指标卡片 */
+  .stMetric {{
+    color: {_fg} !important;
+    background-color: {_card} !important;
+    border: 1px solid {_border} !important;
+    border-radius: 8px !important;
+    padding: 8px !important;
+  }}
   .stMetric * {{
+    color: {_fg} !important;
+  }}
+  .stMetric label {{
+    color: {_fg} !important;
+  }}
+  .stMetric div[data-testid="stMetricValue"] {{
+    color: {_fg} !important;
+  }}
+  .stMetric div[data-testid="stMetricDelta"] {{
     color: {_fg} !important;
   }}
   /* 进度条 */
@@ -232,6 +276,71 @@ st.markdown(
   /* 下载按钮 */
   .stDownloadButton > button {{
     color: white !important;
+  }}
+  /* 顶部工具栏（三点菜单） */
+  div[data-testid="stToolbar"] {{
+    background-color: transparent !important;
+  }}
+  div[data-testid="stToolbar"] button {{
+    color: {_fg} !important;
+    background-color: transparent !important;
+  }}
+  div[data-testid="stToolbar"] button:hover {{
+    background-color: {_border} !important;
+  }}
+  /* 工具栏弹出菜单 */
+  div[data-testid="stStatusWidget"] > div > div > div {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  div[role="menu"] {{
+    background-color: {_card} !important;
+    border: 1px solid {_border} !important;
+  }}
+  div[role="menu"] * {{
+    color: {_fg} !important;
+  }}
+  div[role="menu"] > div:hover {{
+    background-color: {_border} !important;
+  }}
+  /* 弹出菜单（Streamlit内部） */
+  .st-emotion-cache-1gulkj5, 
+  .st-emotion-cache-1r6slb0,
+  .st-emotion-cache-1aej7k8 {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  /* 下拉选项菜单 */
+  div[data-baseweb="popover"] > div {{
+    background-color: {_card} !important;
+    border-color: {_border} !important;
+  }}
+  div[data-baseweb="popover"] li {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  div[data-baseweb="popover"] li:hover {{
+    background-color: {_border} !important;
+  }}
+  div[data-baseweb="popover"] li[aria-selected="true"] {{
+    background-color: {_border} !important;
+  }}
+  /* 多行选择框 */
+  div[data-baseweb="select"] > div {{
+    background-color: {_card} !important;
+    border-color: {_border} !important;
+  }}
+  div[data-baseweb="select"] > div * {{
+    color: {_fg} !important;
+  }}
+  /* 数字输入 */
+  .stNumberInput > div > div > input {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+    border-color: {_border} !important;
+  }}
+  .stNumberInput label {{
+    color: {_fg} !important;
   }}
   /* 多列布局 - 修复对齐 */
   [data-testid="column"] {{
