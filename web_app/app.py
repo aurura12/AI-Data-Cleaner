@@ -544,6 +544,111 @@ st.markdown(
   [data-testid="stVerticalBlock"] > div {{
     width: 100% !important;
   }}
+  /* 加载旋转器背景 */
+  .stSpinner > div {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  .stSpinner > div * {{
+    color: {_fg} !important;
+  }}
+  /* 侧边栏的单选框/复选框容器背景 */
+  section[data-testid="stSidebar"] .stRadio > div {{
+    background-color: {_card} !important;
+    border-radius: 6px !important;
+    padding: 4px !important;
+  }}
+  section[data-testid="stSidebar"] .stRadio label {{
+    background-color: transparent !important;
+    color: {_fg} !important;
+    padding: 2px 8px !important;
+    border-radius: 4px !important;
+  }}
+  /* 表单容器边框 */
+  .stForm {{
+    background-color: {_card} !important;
+    border-color: {_border} !important;
+  }}
+  .stForm * {{
+    color: {_fg} !important;
+  }}
+  /* 分割线颜色 */
+  hr {{
+    border-color: {_border} !important;
+  }}
+  .stDivider {{
+    color: {_border} !important;
+  }}
+  /* 通知/提示消息 */
+  [data-testid="stNotification"] {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+    border-color: {_border} !important;
+  }}
+  .stToast {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+    border: 1px solid {_border} !important;
+  }}
+  /* 状态容器 (st.status) */
+  .stStatus {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+    border-color: {_border} !important;
+  }}
+  .stStatus * {{
+    color: {_fg} !important;
+  }}
+  /* About/设置对话框 */
+  div[role="dialog"] {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+    border: 1px solid {_border} !important;
+  }}
+  div[role="dialog"] * {{
+    color: {_fg} !important;
+  }}
+  /* DataFrame分页控件 */
+  div[data-testid="stDataFrame"] button {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+    border-color: {_border} !important;
+  }}
+  div[data-testid="stDataFrame"] button:hover {{
+    background-color: {_border} !important;
+  }}
+  /* 侧边栏展开器 */
+  section[data-testid="stSidebar"] .streamlit-expanderHeader {{
+    background-color: {_bg} !important;
+    color: {_fg} !important;
+    border-radius: 4px !important;
+  }}
+  section[data-testid="stSidebar"] .streamlit-expanderContent {{
+    background-color: {_card} !important;
+  }}
+  /* 自定义滚动条（暗色） */
+  ::-webkit-scrollbar {{
+    width: 8px !important;
+    height: 8px !important;
+  }}
+  ::-webkit-scrollbar-track {{
+    background: {_bg} !important;
+  }}
+  ::-webkit-scrollbar-thumb {{
+    background: {_border} !important;
+    border-radius: 4px !important;
+  }}
+  ::-webkit-scrollbar-thumb:hover {{
+    background: #555 !important;
+  }}
+  /* 列配置/列排序弹窗 */
+  div[data-testid="stDataFrameResizeHandle"] {{
+    background-color: {_border} !important;
+  }}
+  /* 图形标题背景 */
+  .stPlotlyChart {{
+    background-color: {_card} !important;
+  }}
 </style>
 """,
     unsafe_allow_html=True,
