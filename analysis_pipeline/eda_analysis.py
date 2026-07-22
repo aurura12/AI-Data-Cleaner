@@ -22,6 +22,8 @@ from project_paths import (
     CLEANED_DATA_FILE,
     EDA_REPORT_DIR,
 )
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web_app"))
+from schema_analyzer import DataSchema
 
 sys_name = platform.system()
 font_path = FONT_FILE
@@ -37,12 +39,18 @@ else:
     plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei']
 
 class ChipAnalyzer:
-    def __init__(self, file_path, output_dir):
+    def __init__(self, file_path, output_dir, schema=None):
         """
         初始化分析器
         ##### 【修改】: 简化了初始化逻辑，不再重复清洗，直接读取已清洗好的数据 #####
+        
+        参数:
+            file_path: 清洗后的 CSV 文件路径
+            output_dir: 输出目录
+            schema: DataSchema 对象（可选）；提供后用于语义列名查找
         """
         self.output_dir = output_dir
+        self.schema = schema
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
 
@@ -56,25 +64,49 @@ class ChipAnalyzer:
             self.df = pd.DataFrame()
             return
 
+        # schema 就绪提示
+        if self.schema:
+            print(f"Schema 已加载: {len(self.schema.columns)} 列")
+
         # ##### 【修改】: 直接使用清洗脚本生成的 Process_Date，不再解析中文日期 #####
-        if 'Process_Date' in self.df.columns:
-            self.df['Process_Date'] = pd.to_datetime(self.df['Process_Date'], errors='coerce')
+        date_col = self._resolve_col('Process_Date', 'date', '日期', 'process')
+        if date_col:
+            self.df[date_col] = pd.to_datetime(self.df[date_col], errors='coerce')
+            # 如果找到的日期列不是 Process_Date，显式重命名
+            if date_col != 'Process_Date':
+                self.df['Process_Date'] = self.df[date_col]
             self.df = self.df.sort_values('Process_Date').reset_index(drop=True)
 
-        # ##### 【修改】: 删除了旧的 _process_labels 和 _map_cleaned_features 方法 #####
-        # 因为上一步清洗脚本已经生成了 Is_Pass, Force_kg, Total_Indium_Height
-        
         # 兼容 Label_Pass
-        if 'Is_Pass' not in self.df.columns and 'Label_Pass' in self.df.columns:
-            self.df['Is_Pass'] = self.df['Label_Pass']
+        pass_col = self._resolve_col('Is_Pass', 'pass', '良率', 'label')
+        if pass_col and pass_col not in self.df.columns:
+            if 'Label_Pass' in self.df.columns:
+                self.df['Is_Pass'] = self.df['Label_Pass']
 
         # 简单检查必要字段
-        required_cols = ['Is_Pass', 'Total_Indium_Height']
-        missing = [c for c in required_cols if c not in self.df.columns]
+        is_pass_col = 'Is_Pass' if 'Is_Pass' in self.df.columns else self._resolve_col(None, 'pass', '良率', 'label')
+        height_col = self._resolve_col('Total_Indium_Height', 'height', '高度', 'indium')
+        required_cols = [c for c in [is_pass_col, height_col] if c]
+        missing = [c for c in required_cols if c and c not in self.df.columns]
         if missing:
             print(f"警告: 输入数据缺少关键列 {missing}，部分图表可能无法生成。")
         else:
-            print(f"数据加载成功，当前良率: {self.df['Is_Pass'].mean():.2%}")
+            yield_col = 'Is_Pass' if 'Is_Pass' in self.df.columns else is_pass_col
+            if yield_col and yield_col in self.df.columns:
+                print(f"数据加载成功，当前良率: {self.df[yield_col].mean():.2%}")
+
+    def _resolve_col(self, default_name, *keywords):
+        """
+        语义列名解析: 优先通过 schema 按关键词查找，回退到 default_name。
+        default_name 为 None 时不回退（仅用 schema 查找）。
+        """
+        if self.schema:
+            found = self.schema.find_column(*keywords)
+            if found and found in self.df.columns:
+                return found
+        if default_name and default_name in self.df.columns:
+            return default_name
+        return default_name
 
     def save_processed_data(self, file_name='chip_data_enriched.csv'):
         save_path = os.path.join(self.output_dir, file_name)
@@ -93,7 +125,7 @@ class ChipAnalyzer:
         print(">>> 生成良率分布图...")
         plt.figure(figsize=(8, 6))
 
-        target_col = next((c for c in self.df.columns if '压连' in c), None)
+        target_col = self._resolve_col(None, '压连') or next((c for c in self.df.columns if '压连' in c), None)
         if target_col:
             statuses = pd.to_numeric(self.df[target_col], errors='coerce')
             # 顺序：良好、轻微压连、严重压连、虚焊
@@ -121,7 +153,15 @@ class ChipAnalyzer:
                 else: 
                     colors.append('#95A5A6') # 灰色 (未知)
         elif 'Is_Pass' in self.df.columns:
-            counts_series = self.df['Is_Pass'].value_counts().sort_index()
+            pass_col = 'Is_Pass'
+        else:
+            pass_col = self._resolve_col(None, 'pass', '良率', 'label')
+            if not pass_col or pass_col not in self.df.columns:
+                return
+
+        if pass_col == 'Is_Pass' or pass_col is None:
+            # 已有 Is_Pass
+            counts_series = self.df['Is_Pass' if 'Is_Pass' in self.df.columns else pass_col].value_counts().sort_index()
             labels = ['不良 (Fail)' if idx == 0 else '良品 (Pass)' for idx in counts_series.index]
             colors = ['#E74C3C' if idx == 0 else '#2ECC71' for idx in counts_series.index]
             counts = counts_series.values.tolist()
@@ -146,8 +186,14 @@ class ChipAnalyzer:
         ##### 【修改】: 加入 Equipment_Temp, Vacuum_Level，并使用新列名 #####
         """
         # 使用新列名列表
-        target_cols = ['Total_Indium_Height', 'Force_kg', 'Equipment_Temp', 
-                       'Vacuum_Level', 'Indium_Taper_Zscore', 'Calc_Circuit_Range', 'Is_Pass']
+        # 优先用 schema 的数值特征，回退到硬编码列表
+        if self.schema:
+            numeric_features = self.schema.get_numeric_features()
+            pass_col = self._resolve_col(None, 'pass', '良率', 'label') or 'Is_Pass'
+            target_cols = numeric_features + ([pass_col] if pass_col in self.df.columns else [])
+        else:
+            target_cols = ['Total_Indium_Height', 'Force_kg', 'Equipment_Temp', 
+                           'Vacuum_Level', 'Indium_Taper_Zscore', 'Calc_Circuit_Range', 'Is_Pass']
         
         valid_cols = [c for c in target_cols if c in self.df.columns]
         if len(valid_cols) < 2: return
@@ -184,22 +230,30 @@ class ChipAnalyzer:
         print("--- 正在生成物理特征分布对比图 (含环境参数) ---")
 
         # 锁定6大核心特征 (包含环境)
-        feature_map = {
-            'Total_Indium_Height': '铟柱总高度 (μm)',
-            'Force_kg': '倒焊压力 (kg)',
-            'Calc_Circuit_Range': '电路端平整度 (极差)',
-            'Indium_Taper_Zscore': '形状异常度 (Z-Score)',
-            'Equipment_Temp': '设备温度 (℃)',   # 新增
-            'Vacuum_Level': '真空度读数'        # 新增
-        }
-        
-        core_features = list(feature_map.keys())
+        if self.schema:
+            numeric_features = self.schema.get_numeric_features()
+            core_features = numeric_features[:6]
+            feature_map = {c: c for c in core_features}
+        else:
+            feature_map = {
+                'Total_Indium_Height': '铟柱总高度 (μm)',
+                'Force_kg': '倒焊压力 (kg)',
+                'Calc_Circuit_Range': '电路端平整度 (极差)',
+                'Indium_Taper_Zscore': '形状异常度 (Z-Score)',
+                'Equipment_Temp': '设备温度 (℃)',   # 新增
+                'Vacuum_Level': '真空度读数'        # 新增
+            }
+            core_features = list(feature_map.keys())
 
-        if 'Is_Pass' not in self.df.columns:
+        pass_col = 'Is_Pass' if 'Is_Pass' in self.df.columns else self._resolve_col(None, 'pass', '良率', 'label')
+        if not pass_col or pass_col not in self.df.columns:
             return
 
         plot_df = self.df.copy()
-        plot_df['良率状态'] = plot_df['Is_Pass'].map({1: '良品', 0: '不良'})
+        pass_label_map = {1: '良品', 0: '不良'}
+        if self.schema:
+            pass_label_map = {1: self.schema.pass_label, 0: self.schema.fail_label}
+        plot_df['良率状态'] = plot_df[pass_col].map(pass_label_map)
         
         # 改为 2行3列
         fig, axes = plt.subplots(2, 3, figsize=(16, 11)) 
@@ -257,8 +311,9 @@ class ChipAnalyzer:
         3. 周度趋势分析 (带产量标注版)
         """
         # 1. 检查列名
-        if 'Process_Date' not in self.df.columns: 
-            print(">>> 跳过周度分析: 缺少 Process_Date 列")
+        date_col = self._resolve_col('Process_Date', 'date', '日期', 'process')
+        if not date_col or date_col not in self.df.columns: 
+            print(">>> 跳过周度分析: 缺少日期列")
             return
 
         print(">>> 3. 生成周度趋势图 (含产量标注)...")
@@ -267,15 +322,19 @@ class ChipAnalyzer:
         
         # --- 数据预处理 ---
         df_ts = self.df.copy()
-        # 强制转为时间格式，防止索引报错
-        df_ts['Process_Date'] = pd.to_datetime(df_ts['Process_Date'], errors='coerce')
+        # 强制转为时间格式
+        if date_col != 'Process_Date':
+            df_ts['Process_Date'] = pd.to_datetime(df_ts[date_col], errors='coerce')
+        else:
+            df_ts['Process_Date'] = pd.to_datetime(df_ts['Process_Date'], errors='coerce')
         df_ts = df_ts.dropna(subset=['Process_Date'])
         df_ts = df_ts.set_index('Process_Date').sort_index()
 
         if df_ts.empty: return
 
-        # 确定使用哪一列作为良率 (Label_Pass 优先)
-        target_col = 'Label_Pass' if 'Label_Pass' in df_ts.columns else 'Is_Pass'
+        # 确定使用哪一列作为良率
+        pass_col = self._resolve_col(None, 'pass', '良率', 'label')
+        target_col = 'Label_Pass' if 'Label_Pass' in df_ts.columns else (pass_col or 'Is_Pass')
         
         # 按周重采样: W-MON = 每周一
         weekly_stats = df_ts[target_col].resample('W-MON').agg(['mean', 'count'])
@@ -338,8 +397,9 @@ class ChipAnalyzer:
         适配 Total_Indium_Height 并自动计算天数序列
         """
         # 1. 检查核心数据列 (适配新列名)
-        if 'Total_Indium_Height' not in self.df.columns: 
-            print(">>> 跳过高度漂移图: 缺少 Total_Indium_Height 列")
+        height_col = self._resolve_col('Total_Indium_Height', 'height', '高度', 'indium')
+        if not height_col or height_col not in self.df.columns: 
+            print(">>> 跳过高度漂移图: 缺少高度列")
             return
             
         print(">>> 4. 生成高度漂移图...")
@@ -348,21 +408,26 @@ class ChipAnalyzer:
         plot_df = self.df.copy()
 
         # 3. 动态计算 Time_Seq_Day (如果不存在)
-        if 'Time_Seq_Day' not in plot_df.columns:
-            if 'Process_Date' in plot_df.columns:
-                plot_df['Process_Date'] = pd.to_datetime(plot_df['Process_Date'])
-                start_date = plot_df['Process_Date'].min()
+        time_col = self._resolve_col('Time_Seq_Day', 'time_seq', 'time', '生产天数')
+        date_col = self._resolve_col('Process_Date', 'date', '日期', 'process')
+        if not time_col or time_col not in plot_df.columns:
+            if date_col and date_col in plot_df.columns:
+                plot_df[date_col] = pd.to_datetime(plot_df[date_col])
+                start_date = plot_df[date_col].min()
                 # 计算每一行距离第一天的天数
-                plot_df['Time_Seq_Day'] = (plot_df['Process_Date'] - start_date).dt.days
+                plot_df['Time_Seq_Day'] = (plot_df[date_col] - start_date).dt.days
+                time_col = 'Time_Seq_Day'
             else:
-                print(">>> 跳过高度漂移图: 缺少 Process_Date 用于计算时间序列")
+                print(">>> 跳过高度漂移图: 缺少日期列用于计算时间序列")
                 return
+        else:
+            time_col = time_col
 
         plt.figure(figsize=(12, 6))
         
         # 4. 生成用于图例的文字标签
-        # 优先使用 Label_Pass, 如果没有则尝试 Is_Pass
-        target_label = 'Label_Pass' if 'Label_Pass' in plot_df.columns else 'Is_Pass'
+        pass_col = self._resolve_col(None, 'pass', '良率', 'label')
+        target_label = 'Label_Pass' if 'Label_Pass' in plot_df.columns else (pass_col or 'Is_Pass')
         
         if target_label in plot_df.columns:
             plot_df['Status_Text'] = plot_df[target_label].map({1: '良品 (Pass)', 0: '不良 (Fail)'})
@@ -373,12 +438,12 @@ class ChipAnalyzer:
             palette_dict = None
 
         # 5. 绘制散点图
-        sns.scatterplot(x='Time_Seq_Day', y='Total_Indium_Height', hue=hue_col, 
+        sns.scatterplot(x=time_col, y=height_col, hue=hue_col, 
                        data=plot_df, palette=palette_dict, 
                        s=60, alpha=0.7)
         
         # 6. 绘制趋势线 (拟合线)
-        sns.regplot(x='Time_Seq_Day', y='Total_Indium_Height', data=plot_df, scatter=False, 
+        sns.regplot(x=time_col, y=height_col, data=plot_df, scatter=False, 
                     line_kws={'color': '#3498DB', 'linestyle': '--', 'alpha': 0.8}, 
                     label='整体趋势 (Overall Trend)')
 
@@ -396,16 +461,20 @@ class ChipAnalyzer:
 
     def analyze_position_effect(self):
         """5. 晶圆位置分析"""
-        if 'Position_Code' not in self.df.columns: return
+        pos_col = self._resolve_col('Position_Code', 'position', 'code', '位置')
+        if not pos_col or pos_col not in self.df.columns: return
         
-        pos_stats = self.df.groupby('Position_Code')['Is_Pass'].agg(['mean', 'count']).reset_index()
+        pass_col = 'Is_Pass' if 'Is_Pass' in self.df.columns else self._resolve_col(None, 'pass', '良率', 'label')
+        if not pass_col or pass_col not in self.df.columns: return
+        
+        pos_stats = self.df.groupby(pos_col)[pass_col].agg(['mean', 'count']).reset_index()
         pos_stats = pos_stats[pos_stats['count'] >= 1].sort_values('mean', ascending=True)
         
         if pos_stats.empty: return
 
         plt.figure(figsize=(12, 6))
-        sns.barplot(x='Position_Code', y='mean', data=pos_stats, palette='magma')
-        plt.axhline(self.df['Is_Pass'].mean(), color='red', linestyle='--', label='平均良率')
+        sns.barplot(x=pos_col, y='mean', data=pos_stats, palette='magma')
+        plt.axhline(self.df[pass_col].mean(), color='red', linestyle='--', label='平均良率')
         
         plt.title("各位置良率排行 (Position Check)", fontsize=14)
         plt.ylabel("良率")

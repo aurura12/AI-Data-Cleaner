@@ -105,6 +105,39 @@ class DataSchema:
     def has_uncertainties(self, threshold: float = 0.7) -> bool:
         return len(self.get_uncertain_columns(threshold)) > 0
 
+    def find_column(self, *keywords: str) -> Optional[str]:
+        """
+        按关键词语义查找列名（优先匹配semantic_name，其次raw_name）。
+        示例: schema.find_column('height') → 'Total_Indium_Height'
+        """
+        if not keywords:
+            return None
+        keywords_lower = [k.lower() for k in keywords]
+        for col in self.columns:
+            search_text = (col.semantic_name + ' ' + col.raw_name).lower()
+            if any(k in search_text for k in keywords_lower):
+                return col.raw_name
+        # 第二轮: 部分匹配（关键词是列名的一部分）
+        for col in self.columns:
+            for kw in keywords_lower:
+                if kw in col.raw_name.lower():
+                    return col.raw_name
+        return None
+
+    def get_numeric_features(self) -> List[str]:
+        """获取所有数值特征列名"""
+        return [c.raw_name for c in self.columns
+                if c.role == 'feature' and c.dtype == 'numeric']
+
+    def get_categorical_features(self) -> List[str]:
+        """获取所有类别特征列名"""
+        return [c.raw_name for c in self.columns
+                if c.role == 'feature' and c.dtype == 'categorical']
+
+    def has_column_role(self, role: str) -> bool:
+        """检查是否存在某角色的列"""
+        return any(c.role == role for c in self.columns)
+
 
 # ── 数据摘要生成 ──────────────────────────────────────────
 
