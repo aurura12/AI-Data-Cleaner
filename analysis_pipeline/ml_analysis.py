@@ -18,6 +18,8 @@ from sklearn.impute import SimpleImputer
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from project_paths import FONT_FILE, CLEANED_DATA_FILE, ML_REPORT_DIR
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web_app"))
+from schema_analyzer import DataSchema
 
 # ================= 配置 =================
 INPUT_FILE = CLEANED_DATA_FILE
@@ -90,7 +92,7 @@ def _compute_shap_values(xgb_model, X):
         method = "xgboost.pred_contribs"
     return np.asarray(shap_values), method
 
-def run_ml_analysis(input_path=None, output_path=None):
+def run_ml_analysis(input_path=None, output_path=None, schema=None):
     file_to_read = input_path if input_path else INPUT_FILE
     dir_to_save = output_path if output_path else OUTPUT_DIR
 
@@ -106,6 +108,12 @@ def run_ml_analysis(input_path=None, output_path=None):
     
     if 'Is_Pass' not in df.columns and 'Label_Pass' in df.columns:
         df['Is_Pass'] = df['Label_Pass']
+
+    # 如果没有 Is_Pass，尝试用 schema 查找
+    if 'Is_Pass' not in df.columns and schema:
+        pass_col = schema.find_column('pass', '良率', 'label')
+        if pass_col and pass_col in df.columns:
+            df['Is_Pass'] = df[pass_col]
 
     analysis_results = []
     
@@ -130,31 +138,39 @@ def run_ml_analysis(input_path=None, output_path=None):
     
     # --- B. 准备特征矩阵 (X) ---
     
-    # 1. 核心物理特征列名 (适配你的数据)
-    col_height = 'Total_Indium_Height'
-    col_range = 'Calc_Circuit_Range'
-    col_pressure = 'Force_kg'
-    col_temp = 'Equipment_Temp'    # 新增
-    col_vacuum = 'Vacuum_Level'    # 新增
-    
-    # 2. 位置编码
-    if 'Position_Code' in df.columns:
-        df['Position_Code'] = df['Position_Code'].fillna('Unknown').astype(str)
-        df['Position_Code_Enc'] = LabelEncoder().fit_transform(df['Position_Code'])
+    if schema and schema.get_numeric_features():
+        # 用 schema 自动选择特征
+        feature_candidates = schema.get_numeric_features()
+        # 如果目标列在特征中则排除
+        target_name = schema.get_target_column_name()
+        if target_name and target_name in feature_candidates:
+            feature_candidates.remove(target_name)
+        # 位置编码
+        pos_col = schema.find_column('position', 'code', '位置')
+        if pos_col and pos_col in df.columns:
+            df['Position_Code'] = df[pos_col].fillna('Unknown').astype(str)
+            df['Position_Code_Enc'] = LabelEncoder().fit_transform(df['Position_Code'])
+            feature_candidates.append('Position_Code_Enc')
     else:
-        df['Position_Code_Enc'] = 0
+        # 回退到硬编码半导体特征
+        col_height = 'Total_Indium_Height'
+        col_range = 'Calc_Circuit_Range'
+        col_pressure = 'Force_kg'
+        col_temp = 'Equipment_Temp'
+        col_vacuum = 'Vacuum_Level'
+        
+        # 位置编码
+        if 'Position_Code' in df.columns:
+            df['Position_Code'] = df['Position_Code'].fillna('Unknown').astype(str)
+            df['Position_Code_Enc'] = LabelEncoder().fit_transform(df['Position_Code'])
+        else:
+            df['Position_Code_Enc'] = 0
 
-    # 3. 构造特征集 (已删除 Wafer_Index，加入 Temp 和 Vacuum)
-    feature_candidates = [
-        col_height,             # 总高度
-        col_range,              # 平整度
-        'Indium_Taper_Zscore',  # 锥度
-        col_pressure,           # 压力
-        col_temp,               # 设备温度 (新增)
-        col_vacuum,             # 真空度 (新增)
-        'Time_Seq_Day',         # 时间漂移
-        'Position_Code_Enc'     # 位置
-    ]
+        feature_candidates = [
+            col_height, col_range, 'Indium_Taper_Zscore',
+            col_pressure, col_temp, col_vacuum,
+            'Time_Seq_Day', 'Position_Code_Enc'
+        ]
     
     # 仅保留存在的列
     valid_features = [f for f in feature_candidates if f in df.columns]
@@ -162,13 +178,22 @@ def run_ml_analysis(input_path=None, output_path=None):
     for col in X.columns:
         X[col] = _normalize_numeric_series(X[col])
     
-    # --- C. 增加物理交互项 ---
-    # 逻辑：压力 * 高度 ≈ 某种压入功/能量指标
-    if col_height in X.columns and col_pressure in X.columns:
-        X['Interaction_Press_Height'] = X[col_height] * X[col_pressure]
+    # --- C. 增加物理交互项 (仅半导体特定逻辑) ---
+    if not schema:  # 只有半导体场景有明确的物理公式
+        col_height_present = 'Total_Indium_Height' if 'Total_Indium_Height' in X.columns else None
+        col_pressure_present = 'Force_kg' if 'Force_kg' in X.columns else None
+        if col_height_present and col_pressure_present:
+            X['Interaction_Press_Height'] = X[col_height_present] * X[col_pressure_present]
     
     # --- D. 中文重命名 (用于绘图展示) ---
-    name_mapping = {
+    name_mapping = {}
+    if schema:
+        # 用 schema 的 display_name
+        for col_s in schema.columns:
+            if col_s.raw_name in X.columns:
+                name_mapping[col_s.raw_name] = col_s.display_name or col_s.raw_name
+    # 添加硬编码映射作为补充
+    name_mapping.update({
         'Total_Indium_Height': '总铟柱高度(μm)', 
         'Calc_Circuit_Range': '电路平整度(Range)', 
         'Indium_Taper_Zscore': '铟柱形状异常度(Z)',
@@ -178,10 +203,7 @@ def run_ml_analysis(input_path=None, output_path=None):
         'Time_Seq_Day': '生产天数(设备漂移)', 
         'Position_Code_Enc': '位置编码', 
         'Interaction_Press_Height': '压力x高度(交互项)'
-    }
-    
-    X.rename(columns=name_mapping, inplace=True)
-    feature_names_cn = X.columns.tolist()
+    })
 
     # --- E. 缺失值填充 (针对 RandomForeest) ---
     # XGBoost 可以自动处理 NaN，但 RF 不行
@@ -246,8 +268,10 @@ def run_ml_analysis(input_path=None, output_path=None):
         "data_description": shap_desc
     })
     
-    # 图2: 依赖图 (总高度) - 查看是否存在"太高或太低都不好"的非线性关系
-    target_feat_cn = name_mapping.get(col_height, '总铟柱高度(μm)')
+    # 图2: 依赖图 - 选择最重要的特征进行非线性分析
+    # 优先用第一个有效特征，否则回退到硬编码
+    first_feat = X.columns[0] if len(X.columns) > 0 else None
+    target_feat_cn = first_feat or name_mapping.get('Total_Indium_Height', '总铟柱高度(μm)')
     if target_feat_cn in X.columns:
         plt.figure(figsize=(8, 6))
         shap.dependence_plot(
