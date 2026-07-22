@@ -203,6 +203,48 @@ st.markdown(
     color: {_fg} !important;
     border-color: {_border} !important;
   }}
+  /* Glide Data Grid 编辑器（DataFrame滚动区域+单元格） */
+  .stDataFrameGlideDataEditor {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  .stDataFrameGlideDataEditor * {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  .dvn-scroller {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  .dvn-scroller * {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  .dvn-stack {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  .dvn-stack * {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  /* Glide Data Grid 单元格和行 */
+  .gdg-cell, .dvn-cell, .gdg-clip-region {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+    border-color: {_border} !important;
+  }}
+  /* 表头单元格 */
+  .gdg-header-cell, .dvn-header-cell {{
+    background-color: {_bg} !important;
+    color: {_fg} !important;
+    border-bottom: 1px solid {_border} !important;
+  }}
+  /* 选中行高亮 */
+  .gdg-cell-selected, .dvn-cell-selected {{
+    background-color: #1a3a5c !important;
+    outline-color: #5dade2 !important;
+  }}
   /* 警告和信息框 */
   .stAlert {{
     color: {_fg} !important;
@@ -335,6 +377,40 @@ st.markdown(
     border-color: {_border} !important;
     color: {_fg} !important;
   }}
+  /* ===== 文件上传器完整子层级兜底 ===== */
+  .stFileUploader section {{
+    background-color: {_card} !important;
+    border-color: {_border} !important;
+  }}
+  .stFileUploader section > div > div {{
+    background-color: {_card} !important;
+  }}
+  .stFileUploader section > div > div > div {{
+    background-color: {_card} !important;
+  }}
+  /* 上传后文件列表项 */
+  [data-testid="stFileUploaderFileList"] {{
+    background-color: {_card} !important;
+  }}
+  [data-testid="stFileUploaderFileList"] > div {{
+    background-color: {_card} !important;
+  }}
+  [data-testid="stFileUploaderFileList"] > div > div {{
+    background-color: {_card} !important;
+  }}
+  [data-testid="stFileUploaderFileList"] > div > div > div {{
+    background-color: {_card} !important;
+  }}
+  /* 侧边栏：所有文件上传器内部元素背景兜底 */
+  section[data-testid="stSidebar"] .stFileUploader > div {{
+    background-color: {_card} !important;
+  }}
+  section[data-testid="stSidebar"] .stFileUploader > div > div {{
+    background-color: {_card} !important;
+  }}
+  section[data-testid="stSidebar"] .stFileUploader > div > div > div {{
+    background-color: {_card} !important;
+  }}
   /* 文件上传器 - 通用覆盖所有内部元素背景 */
   .stFileUploader {{
     background-color: transparent !important;
@@ -348,6 +424,15 @@ st.markdown(
     color: {_fg} !important;
   }}
   .stFileUploader * {{
+    color: {_fg} !important;
+  }}
+  /* 上传后文件列表容器 */
+  .stFileUploader [data-testid="stFileUploaderFileList"] {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+  }}
+  .stFileUploader [data-testid="stFileUploaderFileList"] > div {{
+    background-color: {_card} !important;
     color: {_fg} !important;
   }}
   /* 文件上传器成功状态 */
@@ -376,6 +461,36 @@ st.markdown(
   }}
   .stFileUploader [data-testid="stFileUploaderUploadButton"] button:hover {{
     border-color: {_fg} !important;
+  }}
+  /* 修复文件上传器已上传文件行的白色背景（更深层级兜底） */
+  .stFileUploader div[data-testid="stFileUploaderFile"],
+  .stFileUploader div[data-testid="stFileUploaderFile"] > div,
+  .stFileUploader div[data-testid="stFileUploaderFile"] > div > div,
+  .stFileUploader div[data-testid="stFileUploaderFile"] > div > div > div,
+  .stFileUploader div[data-testid="stFileUploaderFile"] button,
+  .stFileUploader div[data-testid="stFileUploaderFile"] [data-testid="stFileUploaderFileName"],
+  .stFileUploader div[data-testid="stFileUploaderFile"] [data-testid="stFileUploaderFileName"] > div,
+  .stFileUploader div[data-testid="stFileUploaderFile"] [data-testid="stFileUploaderFileSize"],
+  .stFileUploader [data-testid="stFileUploaderFileList"] > div > div > div > div,
+  .stFileUploader [data-testid="stFileUploaderFileList"] > div > div > div > div > div,
+  .stFileUploader [data-testid="stFileUploaderFileList"] > div > div > div > div > div > div {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
+    border-color: {_border} !important;
+  }}
+  .stFileUploader div[data-testid="stFileUploaderFile"] button:hover {{
+    background-color: {_border} !important;
+  }}
+  .stFileUploader div[data-testid="stFileUploaderFile"] svg,
+  .stFileUploader div[data-testid="stFileUploaderFile"] svg path {{
+    fill: {_fg} !important;
+  }}
+  /* 文件上传器所有内部 div 最终兜底 */
+  .stFileUploader div,
+  .stFileUploader section,
+  .stFileUploader button {{
+    background-color: {_card} !important;
+    color: {_fg} !important;
   }}
   /* 指标卡片 */
   .stMetric {{
