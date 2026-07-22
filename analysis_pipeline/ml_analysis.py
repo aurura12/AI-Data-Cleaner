@@ -139,12 +139,12 @@ def run_ml_analysis(input_path=None, output_path=None, schema=None):
     # --- B. 准备特征矩阵 (X) ---
     
     if schema and schema.get_numeric_features():
-        # 用 schema 自动选择特征
-        feature_candidates = schema.get_numeric_features()
-        # 如果目标列在特征中则排除
+        # 用 schema 自动选择特征（排除目标列）
         target_name = schema.get_target_column_name()
-        if target_name and target_name in feature_candidates:
-            feature_candidates.remove(target_name)
+        feature_candidates = [
+            f for f in schema.get_numeric_features()
+            if f != target_name
+        ]
         # 位置编码
         pos_col = schema.find_column('position', 'code', '位置')
         if pos_col and pos_col in df.columns:

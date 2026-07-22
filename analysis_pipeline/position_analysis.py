@@ -15,25 +15,35 @@ from project_paths import FONT_FILE, CLEANED_DATA_FILE, POSITION_REPORT_DIR
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web_app"))
 from schema_analyzer import DataSchema
 
+
 # ==========================================
-# 0. 环境配置：字体与绘图风格
+# 0. 环境配置：字体与绘图风格（改为函数，import时不执行）
 # ==========================================
 
-sns.set(style="whitegrid", palette="deep")
-plt.rcParams['axes.unicode_minus'] = False
+_plot_configured = False
 
-sys_name = platform.system()
-font_path = FONT_FILE
-if os.path.exists(font_path):
-    fm.fontManager.addfont(font_path)
-    plt.rcParams['font.sans-serif'] = ['SimHei']
-    print(f"成功加载自定义字体: {font_path}")
-elif sys_name == "Windows":
-    plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei'] 
-elif sys_name == "Darwin":
-    plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'PingFang SC']
-else:
-    plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'DejaVu Sans']
+def _configure_plotting():
+    """配置 matplotlib 和 seaborn 绘图风格（仅执行一次）"""
+    global _plot_configured
+    if _plot_configured:
+        return
+    _plot_configured = True
+    
+    sns.set(style="whitegrid", palette="deep")
+    plt.rcParams['axes.unicode_minus'] = False
+    
+    sys_name = platform.system()
+    font_path = FONT_FILE
+    if os.path.exists(font_path):
+        fm.fontManager.addfont(font_path)
+        plt.rcParams['font.sans-serif'] = ['SimHei']
+        print(f"成功加载自定义字体: {font_path}")
+    elif sys_name == "Windows":
+        plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei'] 
+    elif sys_name == "Darwin":
+        plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'PingFang SC']
+    else:
+        plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'DejaVu Sans']
 
 
 def run_position_analysis(input_path=None, output_dir=None, schema=None):
@@ -51,6 +61,7 @@ def run_position_analysis(input_path=None, output_dir=None, schema=None):
         output_dir = POSITION_REPORT_DIR
 
     os.makedirs(output_dir, exist_ok=True)
+    _configure_plotting()
 
     print(f"--- 读取数据: {os.path.basename(input_path)} ---")
     try:

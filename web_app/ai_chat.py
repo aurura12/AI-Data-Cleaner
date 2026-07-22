@@ -158,12 +158,20 @@ def render_ai_dashboard(df, t, client, target_col=None, schema=None):
             )
 
             # 动态构建编码规则
+            target_cols_names = schema.get_feature_columns(dtype='numeric') or []
             target_rules = ""
             if target_name:
                 target_rules = (
                     f"   - **Target Variable**: '{target_name}' is numeric (1=Pass, 0=Fail). "
                     f"If using it as a grouping variable (hue), you MUST map it to strings first: "
                     f"`df['Status'] = df['{target_name}'].map({{1:'Pass', 0:'Fail'}})`.\n"
+                )
+            else:
+                # 即使没有识别到目标列，也告知LLM可能的目标列模式
+                target_rules = (
+                    "   - **Target Variable**: Not auto-detected. Look for a column named like "
+                    "'defect', 'quality', 'status', 'result', 'label' with few unique values "
+                    "(e.g., 0=Good, 1=Bad). Use `value_counts()` to inspect.\n"
                 )
             numeric_safety = ""
             if numeric_cols:

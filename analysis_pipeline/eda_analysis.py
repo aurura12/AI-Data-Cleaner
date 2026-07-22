@@ -98,7 +98,7 @@ class ChipAnalyzer:
     def _resolve_col(self, default_name, *keywords):
         """
         语义列名解析: 优先通过 schema 按关键词查找，回退到 default_name。
-        default_name 为 None 时不回退（仅用 schema 查找）。
+        如果两者都找不到，返回 None。
         """
         if self.schema:
             found = self.schema.find_column(*keywords)
@@ -106,7 +106,7 @@ class ChipAnalyzer:
                 return found
         if default_name and default_name in self.df.columns:
             return default_name
-        return default_name
+        return None
 
     def save_processed_data(self, file_name='chip_data_enriched.csv'):
         save_path = os.path.join(self.output_dir, file_name)
@@ -152,27 +152,15 @@ class ChipAnalyzer:
                     colors.append('#27AE60') # 深绿 (轻微)
                 else: 
                     colors.append('#95A5A6') # 灰色 (未知)
-        elif 'Is_Pass' in self.df.columns:
-            pass_col = 'Is_Pass'
-        else:
-            pass_col = self._resolve_col(None, 'pass', '良率', 'label')
-            if not pass_col or pass_col not in self.df.columns:
-                return
-
-        if pass_col == 'Is_Pass' or pass_col is None:
-            # 已有 Is_Pass
-            counts_series = self.df['Is_Pass' if 'Is_Pass' in self.df.columns else pass_col].value_counts().sort_index()
-            labels = ['不良 (Fail)' if idx == 0 else '良品 (Pass)' for idx in counts_series.index]
-            colors = ['#E74C3C' if idx == 0 else '#2ECC71' for idx in counts_series.index]
-            counts = counts_series.values.tolist()
-        else:
-            return
-
-        ax = sns.barplot(x=labels, y=counts, palette=colors)
-        max_count = max(counts) if counts else 0
-        offset = max_count * 0.02 if max_count else 0.1
-        for i, v in enumerate(counts):
-            ax.text(i, v + offset, str(v), ha='center', fontweight='bold', fontsize=12)
+            ax = sns.barplot(x=labels, y=counts, palette=colors)
+            for i, v in enumerate(counts):
+                ax.text(i, v + max(counts) * 0.02, str(v), ha='center', fontweight='bold', fontsize=12)
+            plt.title("产线最终良率分布", fontsize=14)
+            plt.ylabel("芯片数量 (Count)")
+            plt.tight_layout()
+            plt.savefig(os.path.join(self.output_dir, '0_生产状态分布统计.png'), dpi=300)
+            plt.close()
+            return  # 四分类图已生成，无需执行二分类逻辑
 
         plt.title("产线最终良率分布", fontsize=14)
         plt.ylabel("芯片数量 (Count)")
@@ -420,8 +408,6 @@ class ChipAnalyzer:
             else:
                 print(">>> 跳过高度漂移图: 缺少日期列用于计算时间序列")
                 return
-        else:
-            time_col = time_col
 
         plt.figure(figsize=(12, 6))
         

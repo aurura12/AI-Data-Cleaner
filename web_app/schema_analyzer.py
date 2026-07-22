@@ -108,20 +108,27 @@ class DataSchema:
     def find_column(self, *keywords: str) -> Optional[str]:
         """
         按关键词语义查找列名（优先匹配semantic_name，其次raw_name）。
+        使用单词边界匹配避免误匹配。
+
         示例: schema.find_column('height') → 'Total_Indium_Height'
+               schema.find_column('date') → '倒焊日期'
         """
         if not keywords:
             return None
+        keywords_pattern = '|'.join(re.escape(k) for k in keywords)
+        word_pattern = re.compile(r'(^|[\s_\-\/])({})([\s_\-\/]|$)'.format(keywords_pattern), re.IGNORECASE)
+        
+        for col in self.columns:
+            search_text = (col.semantic_name + ' ' + col.raw_name)
+            if word_pattern.search(search_text):
+                return col.raw_name
+        
+        # 第二轮: 宽松匹配（用于中文等无单词边界的语言）
         keywords_lower = [k.lower() for k in keywords]
         for col in self.columns:
             search_text = (col.semantic_name + ' ' + col.raw_name).lower()
             if any(k in search_text for k in keywords_lower):
                 return col.raw_name
-        # 第二轮: 部分匹配（关键词是列名的一部分）
-        for col in self.columns:
-            for kw in keywords_lower:
-                if kw in col.raw_name.lower():
-                    return col.raw_name
         return None
 
     def get_numeric_features(self) -> List[str]:
