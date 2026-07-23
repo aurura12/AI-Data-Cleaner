@@ -141,9 +141,13 @@ def layer1_generic_clean(df: pd.DataFrame, schema: DataSchema,
         mapping = {}
         if schema.pass_values:
             for v in schema.pass_values:
-                # 尝试数值和字符串两种格式
+                # 尝试 int/float/str 三种类型，覆盖 LLM 可能返回的各种格式
                 try:
                     mapping[int(v)] = 1
+                except (ValueError, TypeError):
+                    pass
+                try:
+                    mapping[float(v)] = 1
                 except (ValueError, TypeError):
                     pass
                 mapping[str(v)] = 1
@@ -151,6 +155,10 @@ def layer1_generic_clean(df: pd.DataFrame, schema: DataSchema,
             for v in schema.fail_values:
                 try:
                     mapping[int(v)] = 0
+                except (ValueError, TypeError):
+                    pass
+                try:
+                    mapping[float(v)] = 0
                 except (ValueError, TypeError):
                     pass
                 mapping[str(v)] = 0
