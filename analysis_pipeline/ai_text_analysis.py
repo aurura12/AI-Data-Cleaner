@@ -9,6 +9,7 @@ from openai import OpenAI
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from project_paths import (
     ROOT_DIR,
     OUTPUT_DIR,
@@ -17,342 +18,44 @@ from project_paths import (
     AI_TEXT_RESULTS_FILE,
 )
 
+# 领域无关适配层：用 DataSchema 驱动 KPI / 统计 / 报告生成
+from domain_adapter import (
+    load_or_build_schema,
+    collect_generic_analysis,
+    build_report_prompt,
+    discover_charts,
+)
+
 # ==========================================
-# 1. 文本分析结果收集
+# 1. 兼容旧接口：通用分析数据收集
 # ==========================================
 
 def collect_analysis_text_data(base_dir: str) -> Dict:
     """
-    收集所有文本分析结果（CSV、统计数据等）
-    优先读取analysis_summary.json，如果不存在则从CSV文件计算
-    返回: 包含所有分析结果的字典
+    收集所有分析数据（领域无关）。
+    优先读取 DataSchema（由 run_pipeline 或 load_or_build_schema 生成），
+    再基于 schema 计算一套通用统计量。
     """
-    analysis_data = {
-        'kpi_stats': {},
-        'position_stats': {},
-        'eda_summary': {}
-    }
-    
-    output_dir = OUTPUT_DIR
-    
-    # 优先尝试读取摘要JSON文件
-    summary_file = os.path.join(output_dir, 'analysis_summary.json')
-    if os.path.exists(summary_file):
-        try:
-            with open(summary_file, 'r', encoding='utf-8') as f:
-                summary = json.load(f)
-            
-            # 只收集 EDA 和 Position 数据，移除 ML 相关
-            if 'eda_analysis' in summary:
-                eda = summary['eda_analysis']
-                
-                # KPI统计
-                if 'yield_stats' in eda:
-                    yield_stats = eda['yield_stats']
-                    analysis_data['kpi_stats'] = {
-                        'total': yield_stats.get('total', 0),
-                        'pass_rate': yield_stats.get('pass_rate', 0) * 100,
-                        'pass_count': yield_stats.get('pass_count', 0),
-                        'fail_count': yield_stats.get('fail_count', 0)
-                    }
-                
-                # 高度统计
-                if 'height_stats' in eda:
-                    analysis_data['kpi_stats']['height_stats'] = eda['height_stats']
-                
-                # 位置统计
-                if 'position_stats' in eda:
-                    pos = eda['position_stats']
-                    analysis_data['position_stats'] = {
-                        'worst_position': pos.get('worst', {}),
-                        'best_position': pos.get('best', {})
-                    }
-                
-                # 时间趋势
-                if 'time_trend' in eda:
-                    analysis_data['eda_summary'] = {
-                        'height_drift': {
-                            'early_mean': eda['time_trend'].get('early_mean_height', 0),
-                            'late_mean': eda['time_trend'].get('late_mean_height', 0),
-                            'drift_amount': abs(eda['time_trend'].get('drift', 0)),
-                            'drift_trend': 'negative' if eda['time_trend'].get('drift', 0) < 0 else 'positive'
-                        }
-                    }
-            
-            print("从analysis_summary.json加载数据摘要（KPI将从CSV重新计算）")
-        except Exception as e:
-            print(f"读取摘要JSON失败: {e}，将使用CSV文件计算")
-    
-    # 1. 读取清洗后的数据，计算KPI（总是重新计算，确保使用最新数据）
-    data_file = os.path.join(output_dir, 'cleaned_chip_data_final.csv')
-    if os.path.exists(data_file):
-        df = pd.read_csv(data_file)
-        
-        # 计算KPI（优先使用标准标签列，避免偏差）
-        total = len(df)
-        pass_count = 0
-        fail_count = 0
-        status_counts = {}
+    schema = load_or_build_schema()
+    return collect_generic_analysis(schema=schema)
 
-        if 'Label_Pass' in df.columns:
-            pass_count = int((df['Label_Pass'] == 1).sum())
-            fail_count = int((df['Label_Pass'] == 0).sum())
-        elif 'Is_Pass' in df.columns:
-            pass_count = int((df['Is_Pass'] == 1).sum())
-            fail_count = int((df['Is_Pass'] == 0).sum())
-
-        target_col = next((c for c in df.columns if '压连' in c), None)
-        if target_col:
-            for val in df[target_col].dropna():
-                try:
-                    v = int(float(val))
-                    status_counts[v] = status_counts.get(v, 0) + 1
-                except:
-                    pass
-
-        if pass_count == 0 and fail_count == 0 and status_counts:
-            pass_count = status_counts.get(0, 0) + status_counts.get(1, 0)
-            fail_count = status_counts.get(-1, 0) + status_counts.get(2, 0)
-
-        analysis_data['kpi_stats'] = {
-            'total': total,
-            'pass_count': pass_count,
-            'fail_count': fail_count,
-            'pass_rate': (pass_count / total * 100) if total > 0 else 0,
-            'open_count': status_counts.get(-1, 0),
-            'severe_count': status_counts.get(2, 0),
-            'open_rate': (status_counts.get(-1, 0) / total * 100) if total > 0 else 0,
-            'severe_rate': (status_counts.get(2, 0) / total * 100) if total > 0 else 0,
-            'status_distribution': status_counts
-        }
-
-        # 关键特征统计
-        if 'Total_Indium_Height' in df.columns:
-            analysis_data['kpi_stats']['height_stats'] = {
-                'mean': float(df['Total_Indium_Height'].mean()),
-                'median': float(df['Total_Indium_Height'].median()),
-                'std': float(df['Total_Indium_Height'].std()),
-                'min': float(df['Total_Indium_Height'].min()),
-                'max': float(df['Total_Indium_Height'].max())
-            }
-            
-        # 压力统计 (新增)
-        pressure_col = next((c for c in df.columns if '压力' in c), None)
-        if pressure_col:
-            analysis_data['kpi_stats']['pressure_stats'] = {
-                'mean': float(df[pressure_col].mean()),
-                'min': float(df[pressure_col].min()),
-                'max': float(df[pressure_col].max())
-            }
-    
-    # 2. 读取位置分析结果（从CSV或重新计算）
-    pos_data_file = os.path.join(output_dir, 'cleaned_chip_data_final.csv')
-    if os.path.exists(pos_data_file):
-        df_pos = pd.read_csv(pos_data_file)
-        if 'Position_Code' in df_pos.columns and 'Is_Pass' in df_pos.columns:
-            pos_stats = df_pos.groupby('Position_Code')['Is_Pass'].agg(['mean', 'count']).reset_index()
-            pos_stats.columns = ['Position_Code', 'Yield_Rate', 'Count']
-            analysis_data['position_stats'] = {
-                'position_yield': pos_stats.to_dict('records'),
-                'worst_position': pos_stats.loc[pos_stats['Yield_Rate'].idxmin()].to_dict() if len(pos_stats) > 0 else {},
-                'best_position': pos_stats.loc[pos_stats['Yield_Rate'].idxmax()].to_dict() if len(pos_stats) > 0 else {}
-            }
-    
-    # 3. EDA摘要（从数据计算）
-    if os.path.exists(data_file):
-        df_eda = pd.read_csv(data_file)
-        if 'Time_Seq_Day' in df_eda.columns and 'Total_Indium_Height' in df_eda.columns:
-            # 计算时间趋势
-            median_day = df_eda['Time_Seq_Day'].quantile(0.5)
-            early_mean = float(df_eda[df_eda['Time_Seq_Day'] < median_day]['Total_Indium_Height'].mean())
-            late_mean = float(df_eda[df_eda['Time_Seq_Day'] >= median_day]['Total_Indium_Height'].mean())
-            
-            analysis_data['eda_summary'] = {
-                'height_drift': {
-                    'early_mean': early_mean,
-                    'late_mean': late_mean,
-                    'drift_trend': 'negative' if late_mean < early_mean else 'positive',
-                    'drift_amount': abs(late_mean - early_mean)
-                }
-            }
-    
-    return analysis_data
 
 # ==========================================
-# 2. 使用文本LLM生成分析报告
+# 2. 使用文本LLM生成分析报告（基于 DataSchema，无行业硬编码）
 # ==========================================
 
 def generate_text_based_report(
     analysis_data: Dict,
+    schema=None,
     model_name: str = "qwen-plus",
-    chart_data_text: str = None
+    chart_data_text: str = None,
+    chart_paths: list = None
 ) -> str:
     """
-    基于文本分析结果和图表数据，使用LLM生成综合报告
+    基于通用统计结果与 DataSchema，使用LLM生成综合报告。
+    业务背景与目标含义全部来自 schema，不再写死任何行业知识。
     """
-    # 获取KPI数据用于填充模板
-    kpi = analysis_data.get('kpi_stats', {})
-    total = kpi.get('total', 0)
-    pass_rate = kpi.get('pass_rate', 0)
-    pass_count = kpi.get('pass_count', 0)
-    fail_count = kpi.get('fail_count', 0)
-    open_rate = kpi.get('open_rate', 0)
-    open_count = kpi.get('open_count', 0)
-    severe_rate = kpi.get('severe_rate', 0)
-    severe_count = kpi.get('severe_count', 0)
-    status_dist = kpi.get('status_distribution', {})
-    
-    replacements = {
-        "Total_Indium_Height": "总铟柱高度",
-        "Calc_Circuit_Range": "电路端平整度",
-        "Indium_Taper_Zscore": "铟柱形状异常度",
-        "Force_kg": "倒焊压力",
-        "Equipment_Temp": "设备温度",
-        "Vacuum_Level": "真空度",
-        "Time_Seq_Day": "生产天数",
-        "Wafer_Index": "晶圆次序",
-        "Position_Code": "位置编码",
-        "Label_Pass": "良品标签",
-        "Is_Pass": "是否良品",
-        "Pass": "良品",
-        "Fail": "不良",
-    }
-
-    analysis_summary = f"""
-【数据分析结果摘要 - 请务必严格引用以下数值】
-
-1. 核心KPI指标：
-   - 总样本数：{total}
-   - 整体良品率：{pass_rate:.2f}% (良品共{pass_count}颗)
-   - 整体不良率：{(100 - pass_rate):.2f}% (不良品共{fail_count}颗)
-   - 严重压连(2)：占比{severe_rate:.2f}%，共{severe_count}颗 [这是主要的失效原因]
-   - 虚焊(-1)：占比{open_rate:.2f}%，共{open_count}颗
-   - 良好(0)：{status_dist.get(0, 0)}颗
-   - 轻微压连(1)：{status_dist.get(1, 0)}颗
-   - [重要逻辑] 良品(Pass) = 良好(0) + 轻微压连(1)；不良(Fail) = 严重压连(2) + 虚焊(-1)。
-
-2. 关键特征统计：
-   - 总铟柱高度：良品中位数约12.10μm，不良品中位数约11.41μm，差异约0.69μm。
-   - 倒焊压力：均值 {analysis_data['kpi_stats'].get('pressure_stats', {}).get('mean', 0):.2f} kg，范围 {analysis_data['kpi_stats'].get('pressure_stats', {}).get('min', 0):.2f} - {analysis_data['kpi_stats'].get('pressure_stats', {}).get('max', 0):.2f} kg。
-   - [警告] 严禁使用 10-12kg，必须使用 18-24kg 这一真实区间。
-
-3. 位置良率分析：
-   - 最差位置：{analysis_data['position_stats'].get('worst_position', {}).get('Position_Code', 'N/A')}，良率为 {analysis_data['position_stats'].get('worst_position', {}).get('Yield_Rate', 0)*100:.1f}%。
-   - 最佳位置：{analysis_data['position_stats'].get('best_position', {}).get('Position_Code', 'N/A')}，良率为 {analysis_data['position_stats'].get('best_position', {}).get('Yield_Rate', 0)*100:.1f}%。
-"""
-
-    for k, v in replacements.items():
-        analysis_summary = analysis_summary.replace(k, v)
-    
-    # 如果提供了图表数据，添加到摘要中
-    if chart_data_text:
-        for k, v in replacements.items():
-            chart_data_text = chart_data_text.replace(k, v)
-        analysis_summary += f"\n\n【图表数据摘要（从绘图代码提取的文字数据）】\n{chart_data_text}"
-    
-    # 构建与图像识别完全相同的HTML模板提示词
-    prompt = f"""【角色设定】
-你现在是一位半导体良率优化专家（Yield Optimization Expert）和机器学习工程师。
-我们已经完成了前期的 EDA（探索性数据分析）和位置分析阶段，现在进入给出建议总结分析阶段。
-
-【任务目标】
-根据所有图表分析结果和提供的业务背景，生成一份综合评估报告。报告需识别可能与良率下降相关的物理参数特征和数据模式，** 为产线工程师提供决策参考和排查线索**（非绝对执行指令）。分析应基于实际数据，使用客观、统计学的口吻，严格确保引用的数据、占比、百分比、物理量范围与【分析结果摘要】完全一致，严禁虚构或凭空猜测数据区间。
-
-【语言与表述要求（必须遵守）】
-1. 全文只用中文表达，禁止出现类似 Total_Indium_Height、Indium_Taper_Zscore、Equipment_Temp 这类英文/下划线字段名。
-2. 禁止出现 Pass/Fail 这类英文类别名，统一使用“良品/不良”。
-3. 字段必须使用中文名：总铟柱高度、电路端平整度、铟柱形状异常度、倒焊压力、设备温度、真空度、生产天数、晶圆次序、位置编码。
-4. 允许出现位置编码 M1~M10（例如 M5），除此之外尽量避免英文缩写。
-
-【数据概况与业务逻辑】
-数据集：cleaned_chip_data_final.csv
-预测目标（Label）：
-原始列：压连情况（-1=虚焊, 0=正常, 1=轻微压连, 2=严重压连）。
-建模目标：二分类（Binary Classification）。
-逻辑：{{-1, 2}} = 不良 (0) ；{{0, 1}} = 良品 (1) 。（注意：这是一个非平衡数据集，不良样本较少但成本极高）。
-关键特征：
-* 总铟柱高度：核心特征，上下高度和。
-* 电路端平整度：注意存在缺失值，仅激光调平工艺有此值。
-* 铟柱形状异常度：反映形状偏离的程度。
-* 倒焊压力：工艺设定压力。
-* 生产天数：用来捕捉设备老化/漂移。
-* 晶圆次序：反映批次效应。
-* 位置编码：空间位置（M1~M10）。
-补充说明：铟柱高度与倒焊压力不存在因果关系，仅可做相关性或共现分析，避免直接推断因果。
-
-【已完成的图表分析（基于文字数据）】
-{analysis_summary}
-
-【参考报告结构（必须严格遵循）】
-请严格按照以下HTML结构生成报告内容，保持与模板完全一致的格式和风格：
-
-<div class="section-card">
-  <h2>2. 分布现状</h2>
-  
-  <h3>2.1 压连结果分布</h3>
-  <div class="chart-wrapper">
-    <img src="output/analysis_report/0_生产状态分布统计.png" alt="图表: 生产状态分布">
-  </div>
-  <p>（分析四类生产状态的分布情况，指出严重压连是主要失效原因，并说明各状态的具体数量和占比。每个段落至少3-5句话，避免占位符文字。**务必将对该图的分析与建议紧跟在此图下方呈现，一图一段**）</p>
-
-  <h3>2.2 关键参数特征差异</h3>
-  <div class="chart-wrapper">
-    <img src="output/analysis_report/2_核心特征分布_2x3_中文.png" alt="图表: 核心特征分布">
-  </div>
-  <p>（对比Pass/Fail样本在关键参数上的分布差异，重点分析总铟柱高度、倒焊压力、铟柱形状异常度等。指出关键阈值和风险区间。每个段落至少3-5句话，避免占位符文字。**务必将分析与建议紧跟在此图下方，一图一段**）</p>
-
-  <h3>2.3 参数间关联性与"实验设计复盘"</h3>
-  <div class="chart-wrapper">
-    <img src="output/analysis_report/1_参数相关性分析.png" alt="图表: 相关性分析">
-  </div>
-  <div class="analysis-box">
-    <p>（分析相关性热力图，揭示人为操作模式。每个段落至少3-5句话，避免占位符文字。）</p>
-    <ul>
-      <li><strong>良率的物质基础：</strong> 良率与总铟柱高度的正相关关系，解释其物理机制。</li>
-      <li><strong>揭示不良的操作模式：</strong> 压力与高度的负相关关系，说明对低高度物料施加了高压力。</li>
-      <li><strong>叠加风险：</strong> 失效样本在"低高度+差形状+高压力"三重恶劣条件下产生，解释其影响。</li>
-    </ul>
-  </div>
-</div>
-
-<div class="section-card">
-  <h2>3. 工艺与设备维度深潜</h2>
-
-  <h3>3.1 位置编码异质性分析：以 M5 为基准的偏差诊断</h3>
-  <div class="chart-wrapper">
-    <img src="output/position_analysis_v2/1_Position_Yield_Rate.png" alt="图表: 空间效应良率">
-  </div>
-  <div class="chart-wrapper">
-    <img src="output/position_analysis_v2/2_Position_Failure_Detail.png" alt="图表: 空间效应缺陷详情">
-  </div>
-  <div class="analysis-box">
-    <p>（分析各位置的良率差异，锁定M7、M8、M2、M4等异常位置，并解释其具体问题。每个段落至少3-5句话，避免占位符文字。**分析与建议紧跟该图下方，一图一段**）</p>
-  </div>
-  <div class="chart-wrapper">
-    <img src="output/position_analysis_v2/3_Position_Physical_Features.png" alt="图表: 物理一致性特征">
-  </div>
-  <div class="analysis-box">
-    <p>（以M5为稳定性标杆，分析其他位置的物理偏差，如系统性高度偏移、一致性失控、形状异常等。每个段落至少3-5句话，避免占位符文字。**分析与建议紧跟该图下方，一图一段**）</p>
-  </div>
-</div>
-
-【输出要求】
-1. 必须严格按照上述HTML结构生成，包括所有div与class属性
-2. 使用图表路径时，必须使用相对路径（如 output/analysis_report/0_生产状态分布统计.png）
-3. 分析内容要求：
-   - 基于提供的图表分析结果（文字数据），使用客观、统计学的口吻进行深入、专业的分析
-   - 严禁虚构数据，严禁引用错误的压力或高度数值区间，必须与上方提供的统计结果对齐
-   - 每个段落至少3-5句话，避免占位符文字
-   - 每个图表对应的段落必须包含至少一句建议（以“建议”开头或包含“建议”）
-   - **避免使用绝对化语言**（如"必须设定"、"禁止超过"、"一定导致"等）
-   - **采用建议性话术**（如"建议关注"、"风险可能显著增加"、"建议维持在"、"需关注区间"、"值得排查"等）
-   - 指出潜在的高风险参数区间或需要重点监控的异常点，但以建议和参考的形式呈现
-   - 数据应根据实际情况变化，基于实际统计结果进行分析
-4. 保持与模板完全一致的视觉风格和结构
-5. **重要：直接输出HTML代码，不要添加任何markdown代码块标记（如```html或```），不要添加任何解释文字，只输出纯HTML内容**
-6. **严禁在 HTML 标签闭合处添加额外的引号或非标签文字（如 </div>" 或 alt="..."），确保 HTML 语法完全正确。**
-
-请开始生成综合报告："""
+    prompt = build_report_prompt(analysis_data, schema, chart_data_text, chart_paths)
 
     try:
         client = OpenAI(
@@ -457,23 +160,29 @@ def generate_text_based_report(
         print(f"报告生成异常: {e}")
         return ""
 
+
 # ==========================================
 # 3. 主函数
 # ==========================================
 
 def main():
-    """主函数：基于文本分析结果生成AI报告"""
+    """主函数：基于通用分析结果生成AI报告"""
     base_dir = ROOT_DIR
-    
+
     print("=" * 60)
-    print("AI文本分析报告生成模块")
+    print("AI文本分析报告生成模块（领域无关）")
     print("=" * 60)
-    
-    # 1. 收集分析结果
-    print("\n[步骤 1/3] 收集分析结果...")
+
+    # 0. 加载/构建 DataSchema（贯穿整条流水线）
+    schema = load_or_build_schema()
+    print(f"[Schema] 已加载，共 {len(schema.columns)} 列"
+          + (f"，目标列={schema.target_column}" if schema.target_column else ""))
+
+    # 1. 收集通用分析结果
+    print("\n[步骤 1/3] 收集通用分析结果（基于 DataSchema）...")
     analysis_data = collect_analysis_text_data(base_dir)
-    print(f"已收集KPI、位置分析、EDA数据")
-    
+    print("已收集 KPI、特征对比、相关性、位置效应等通用统计")
+
     # 2. 提取图表数据（从绘图代码中提取）
     print("\n[步骤 2/4] 提取图表数据（从EDA/Position绘图代码）...")
     try:
@@ -484,19 +193,25 @@ def main():
     except Exception as e:
         print(f"图表数据提取失败: {e}，将仅使用统计摘要")
         chart_data_text = None
-    
+
+    # 2.5 发现实际生成的图表，供 LLM 真实引用
+    chart_paths = discover_charts(ROOT_DIR)
+    print(f"发现 {len(chart_paths)} 张可用图表")
+
     # 3. 生成AI报告
     print("\n[步骤 3/4] 使用LLM生成综合报告...")
     report_content = generate_text_based_report(
         analysis_data,
+        schema=schema,
         model_name=os.getenv("DASHSCOPE_TEXT_MODEL") or "qwen-plus",
-        chart_data_text=chart_data_text
+        chart_data_text=chart_data_text,
+        chart_paths=chart_paths
     )
-    
+
     output_dir = OUTPUT_DIR
     os.makedirs(output_dir, exist_ok=True)
     results_file = os.path.join(output_dir, 'ai_text_analysis_results.json')
-    
+
     if not report_content:
         print("AI报告生成失败")
         # 写入失败文件，供前端检测
@@ -507,7 +222,7 @@ def main():
                 'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }, f, ensure_ascii=False, indent=2)
         return
-    
+
     # 4. 保存结果
     print("\n[步骤 4/4] 保存分析结果...")
     with open(results_file, 'w', encoding='utf-8') as f:
@@ -516,10 +231,10 @@ def main():
             'comprehensive_report': report_content,
             'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }, f, ensure_ascii=False, indent=2)
-    
+
     print(f"分析结果已保存至: {results_file}")
     print(f"综合报告长度: {len(report_content)} 字符")
-    
+
     return analysis_data, report_content
 
 if __name__ == "__main__":
