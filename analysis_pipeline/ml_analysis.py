@@ -412,4 +412,9 @@ def run_ml_analysis(input_path=None, output_path=None, schema=None):
     print("建议重点关注: 1_SHAP_归因分析.png (红点越靠右，说明该特征值导致了缺陷)")
 
 if __name__ == "__main__":
-    run_ml_analysis()
+    try:
+        from domain_adapter import load_or_build_schema
+        _schema = load_or_build_schema()
+    except Exception:
+        _schema = None
+    run_ml_analysis(schema=_schema)

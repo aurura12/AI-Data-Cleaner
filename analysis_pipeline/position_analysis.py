@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from project_paths import FONT_FILE, CLEANED_DATA_FILE, POSITION_REPORT_DIR
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web_app"))
 from schema_analyzer import DataSchema
+from domain_adapter import load_or_build_schema
 
 
 # ==========================================
@@ -218,5 +219,6 @@ def run_position_analysis(input_path=None, output_dir=None, schema=None):
 
 
 if __name__ == "__main__":
-    # 子进程入口: 使用默认路径，无 schema
-    run_position_analysis()
+    # 子进程入口: 使用默认路径，并加载贯穿整条流水线的 DataSchema
+    schema = load_or_build_schema()
+    run_position_analysis(schema=schema)

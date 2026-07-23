@@ -45,6 +45,14 @@ try:
 except Exception as e:
     print(f"⚠️ 数据清洗异常: {e}，但继续执行后续步骤...")
 
+# 1.5 构建并持久化 DataSchema（贯穿下游分析/报告，领域无关的关键）
+try:
+    from domain_adapter import load_or_build_schema
+    load_or_build_schema()
+    print("✅ DataSchema 已构建并持久化（output/schema.json）")
+except Exception as e:
+    print(f"⚠️ DataSchema 构建失败（不影响后续步骤）: {e}")
+
 # 2. EDA 分析
 print("\n[步骤 2/6] EDA 探索性数据分析...")
 subprocess.run([sys.executable, os.path.join(PIPELINE_DIR, "eda_analysis.py")])

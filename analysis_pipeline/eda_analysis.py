@@ -24,6 +24,7 @@ from project_paths import (
 )
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web_app"))
 from schema_analyzer import DataSchema
+from domain_adapter import load_or_build_schema
 
 sys_name = platform.system()
 font_path = FONT_FILE
@@ -492,7 +493,9 @@ if __name__ == "__main__":
     input_csv = CLEANED_DATA_FILE
     output_dir = EDA_REPORT_DIR
 
-    analyzer = ChipAnalyzer(input_csv, output_dir)
+    # 加载贯穿整条流水线的 DataSchema（领域无关的关键）
+    schema = load_or_build_schema()
+    analyzer = ChipAnalyzer(input_csv, output_dir, schema=schema)
     analyzer.save_processed_data('chip_data_for_viz.csv')
     analyzer.run_full_analysis()
    
