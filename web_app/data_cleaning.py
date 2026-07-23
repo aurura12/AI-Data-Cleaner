@@ -748,6 +748,10 @@ def render_data_cleaning(df_raw, t, id_col=None):
         _render_llm_cleaning(df_raw, t, df_active)
         return
 
+    # --- 方法论说明（仅传统清洗显示） ---
+    with st.expander(t.get('method_expander_title'), expanded=False):
+        st.info(t.get('method_explanation'))
+
     st.subheader(t.get('clean_title'))
 
     # --- 自动清洗按钮 ---
