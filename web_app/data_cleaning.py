@@ -8,6 +8,7 @@ import re
 import os
 import sys
 import json
+import streamlit.components.v1 as _st_comp
 import config as utils
 import traceback
 import warnings
@@ -329,6 +330,9 @@ def render_data_cleaning(df_raw, t, id_col=None):
     def _clean_headers(df):
         df0 = df.copy()
         df0.dropna(how='all', inplace=True)
+        # 如果列名已经是人类可读的名称（不是pandas默认的整数0,1,2...），跳过表头处理
+        if not all(isinstance(c, (int, np.integer)) for c in df0.columns):
+            return df0, {'before': len(df0), 'after': len(df0), 'removed': 0, 'cols': len(df0.columns)}
         if '芯片号' in df0.columns:
             df0.columns = [str(c).replace('（', '(').replace('）', ')').replace(' ', '').strip() for c in df0.columns]
             before = len(df0)
@@ -514,7 +518,7 @@ def render_data_cleaning(df_raw, t, id_col=None):
                     "类型": col.dtype,
                     "置信度": f"{col.confidence:.0%}"
                 })
-            st.dataframe(pd.DataFrame(overview), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(overview), width="stretch", hide_index=True)
 
         # ── LLM增强清洗选项 ──
         enable_llm = st.checkbox(
@@ -592,14 +596,8 @@ def render_data_cleaning(df_raw, t, id_col=None):
                     # category 类型会导致 Glide Data Grid 渲染空白，转回 object
                     for col in df_display.select_dtypes(include=['category']).columns:
                         df_display[col] = df_display[col].astype(str)
-                    if df_display.columns.duplicated().any():
-                        cols = pd.Series(df_display.columns)
-                        for dup in cols[cols.duplicated()].unique():
-                            cols[cols[cols == dup].index.values.tolist()] = [
-                                dup if i == 0 else f"{dup}_{i}" for i in range(sum(cols == dup))
-                            ]
-                        df_display.columns = cols
-                    st.dataframe(df_display, use_container_width=True, height=420)
+                    df_display = _fix_duplicate_columns(df_display)
+                    st.dataframe(df_display, width="stretch", height=420)
 
                     # 目标列分布
                     target = target_override or schema.target_column
@@ -766,7 +764,10 @@ def render_data_cleaning(df_raw, t, id_col=None):
                         st.info(f"剔除全空行: {removed_rows} 行")
                         st.info(f"处理后数据行数: {cleaned_rows}")
                         df_display = _fix_duplicate_columns(raw_df.head(50).copy())
-                        st.dataframe(df_display, use_container_width=True, height=420)
+                        # 修复：category类型会导致Glide Data Grid渲染空白
+                        for col in df_display.select_dtypes(include=['category']).columns:
+                            df_display[col] = df_display[col].astype(str)
+                        st.dataframe(df_display, width="stretch", height=420)
                         st.divider()
                         
                         # --- 步骤 2: 智能表头识别与清洗 ---
@@ -779,7 +780,10 @@ def render_data_cleaning(df_raw, t, id_col=None):
                         st.info(f"列数: {hstats['cols']}")
                         st.info(f"有效行数: {hstats['after']} (移除 {hstats['removed']})")
                         df_display = _fix_duplicate_columns(df2.head(50).copy())
-                        st.dataframe(df_display, use_container_width=True, height=420)
+                        # 修复：category类型会导致Glide Data Grid渲染空白
+                        for col in df_display.select_dtypes(include=['category']).columns:
+                            df_display[col] = df_display[col].astype(str)
+                        st.dataframe(df_display, width="stretch", height=420)
                         st.divider()
                         
                         # --- 步骤 3: 解析芯片正则特征 ---
@@ -792,7 +796,10 @@ def render_data_cleaning(df_raw, t, id_col=None):
                         st.info(f"解析成功: {rstats['valid']} / {rstats['total']}")
                         cols_3 = [c for c in ['芯片号','Chip_Source','Date_String','Batch_ID','Wafer_Index','Position_Code'] if c in df3.columns]
                         df_display = _fix_duplicate_columns(df3[cols_3].head(50).copy())
-                        st.dataframe(df_display, use_container_width=True, height=420)
+                        # 修复：category类型会导致Glide Data Grid渲染空白
+                        for col in df_display.select_dtypes(include=['category']).columns:
+                            df_display[col] = df_display[col].astype(str)
+                        st.dataframe(df_display, width="stretch", height=420)
                         st.divider()
                         
                         # --- 步骤 3.5: 解析设备环境特征 (新增) ---
@@ -823,7 +830,10 @@ def render_data_cleaning(df_raw, t, id_col=None):
                         # 【修改】: 添加环境参数到显示列表
                         cols_4 = [c for c in ['芯片号','Total_Indium_Height','Calc_Circuit_Range','Indium_Taper_Zscore','Time_Seq_Day','Equipment_Temp','Vacuum_Level'] if c in df4.columns]
                         df_display = _fix_duplicate_columns(df4[cols_4].head(50).copy())
-                        st.dataframe(df_display, use_container_width=True, height=420)
+                        # 修复：category类型会导致Glide Data Grid渲染空白
+                        for col in df_display.select_dtypes(include=['category']).columns:
+                            df_display[col] = df_display[col].astype(str)
+                        st.dataframe(df_display, width="stretch", height=420)
                         st.divider()
                         
                         # --- 步骤 5: 生成标签与类别编码 ---
@@ -838,7 +848,10 @@ def render_data_cleaning(df_raw, t, id_col=None):
                         st.info(f"样本量: {lstats['rows']}")
                         cols_5 = [c for c in ['芯片号','Label_Pass','Force_kg','Leveling_Mode'] if c in df5.columns]
                         df_display = _fix_duplicate_columns(df5[cols_5].head(50).copy())
-                        st.dataframe(df_display, use_container_width=True, height=420)
+                        # 修复：category类型会导致Glide Data Grid渲染空白
+                        for col in df_display.select_dtypes(include=['category']).columns:
+                            df_display[col] = df_display[col].astype(str)
+                        st.dataframe(df_display, width="stretch", height=420)
                         st.divider()
                         
                         # --- 步骤 6: 保存最终结果 ---
@@ -865,14 +878,32 @@ def render_data_cleaning(df_raw, t, id_col=None):
             st.info(f"初始数据行数: {stats['initial_rows']}")
             st.info(f"剔除全空行: {stats['removed_rows']} 行")
             st.info(f"处理后数据行数: {stats['cleaned_rows']}")
-            # 处理重复列名（避免Arrow转换错误）
+            # 修复重复列名 + category类型会导致Glide Data Grid渲染空白
             df_display = st.session_state['df_clean'].head(50).copy()
-            if df_display.columns.duplicated().any():
-                cols = pd.Series(df_display.columns)
-                for dup in cols[cols.duplicated()].unique():
-                    cols[cols[cols == dup].index.values.tolist()] = [dup if i == 0 else f"{dup}_{i}" for i in range(sum(cols == dup))]
-                df_display.columns = cols
-            st.dataframe(df_display, use_container_width=True, height=420)
+            for col in df_display.select_dtypes(include=['category']).columns:
+                df_display[col] = df_display[col].astype(str)
+            df_display = _fix_duplicate_columns(df_display)
+            # Browser console log
+            try:
+                _debug_rows = [{str(k): str(v) for k, v in row.items()} for _, row in df_display.iterrows()]
+                _st_comp.html(
+                    f'<script>parent.console.log("[DEBUG data_cleaning.py] 步骤1:", {json.dumps({"shape": [int(df_display.shape[0]), int(df_display.shape[1])], "empty": bool(df_display.empty), "columns": [str(c) for c in df_display.columns], "dtypes": {str(k): str(v) for k, v in df_display.dtypes.items()}, "rows": _debug_rows}, ensure_ascii=False)})</script>',
+                    height=0
+                )
+            except Exception as _e:
+                print(f"[DEBUG] Browser console log failed: {_e}")
+            print(f"\n{'='*60}\n[DEBUG data_cleaning.py] 步骤1 df_display:")
+            print(f"  shape={df_display.shape}, empty={df_display.empty}")
+            print(f"  columns={list(df_display.columns)}")
+            print(f"  dtypes={dict(df_display.dtypes)}")
+            print(f"  first_row={df_display.iloc[0].to_dict() if len(df_display) > 0 else 'EMPTY'}")
+            print(f"{'='*60}\n")
+            st.dataframe(df_display, width="stretch", height=420)
+            with st.expander("DEBUG 步骤1 DataFrame", expanded=False):
+                st.write(f"shape={df_display.shape}, empty={df_display.empty}")
+                st.write(f"columns={list(df_display.columns)}")
+                st.write(f"dtypes={dict(df_display.dtypes)}")
+                st.write(df_display)
         else:
             st.info(f"初始数据行数: {len(df_raw)}")
     
@@ -887,14 +918,12 @@ def render_data_cleaning(df_raw, t, id_col=None):
         if h:
             st.info(f"列数: {h['cols']}")
             st.info(f"有效行数: {h['after']} (移除 {h['removed']})")
-            # 处理重复列名（避免Arrow转换错误）
+            # 修复重复列名 + category类型会导致Glide Data Grid渲染空白
             df_display = st.session_state['df_clean'].head(50).copy()
-            if df_display.columns.duplicated().any():
-                cols = pd.Series(df_display.columns)
-                for dup in cols[cols.duplicated()].unique():
-                    cols[cols[cols == dup].index.values.tolist()] = [dup if i == 0 else f"{dup}_{i}" for i in range(sum(cols == dup))]
-                df_display.columns = cols
-            st.dataframe(df_display, use_container_width=True, height=420)
+            for col in df_display.select_dtypes(include=['category']).columns:
+                df_display[col] = df_display[col].astype(str)
+            df_display = _fix_duplicate_columns(df_display)
+            st.dataframe(df_display, width="stretch", height=420)
     else:
         st.info("⏳ 等待执行...")
     
@@ -909,8 +938,12 @@ def render_data_cleaning(df_raw, t, id_col=None):
         if r:
             st.info(f"解析成功: {r['valid']} / {r['total']}")
             cols_3b = [c for c in ['芯片号','Chip_Source','Date_String','Batch_ID','Wafer_Index','Position_Code'] if c in st.session_state['df_clean'].columns]
-            df_display = _fix_duplicate_columns(st.session_state['df_clean'][cols_3b].head(50).copy())
-            st.dataframe(df_display, use_container_width=True, height=420)
+            df_display = st.session_state['df_clean'][cols_3b].head(50).copy()
+            # 修复：category类型会导致Glide Data Grid渲染空白
+            for col in df_display.select_dtypes(include=['category']).columns:
+                df_display[col] = df_display[col].astype(str)
+            df_display = _fix_duplicate_columns(df_display)
+            st.dataframe(df_display, width="stretch", height=420)
     else:
         st.info("⏳ 等待执行...")
     
@@ -931,12 +964,11 @@ def render_data_cleaning(df_raw, t, id_col=None):
             cols_4b = [c for c in ['芯片号','Total_Indium_Height','Calc_Circuit_Range','Indium_Taper_Zscore','Time_Seq_Day','Equipment_Temp','Vacuum_Level'] if c in st.session_state['df_clean'].columns]
             # 处理重复列名（避免Arrow转换错误）
             df_display = st.session_state['df_clean'][cols_4b].head(50).copy()
-            if df_display.columns.duplicated().any():
-                cols = pd.Series(df_display.columns)
-                for dup in cols[cols.duplicated()].unique():
-                    cols[cols[cols == dup].index.values.tolist()] = [dup if i == 0 else f"{dup}_{i}" for i in range(sum(cols == dup))]
-                df_display.columns = cols
-            st.dataframe(df_display, use_container_width=True, height=420)
+            # 修复：category类型会导致Glide Data Grid渲染空白
+            for col in df_display.select_dtypes(include=['category']).columns:
+                df_display[col] = df_display[col].astype(str)
+            df_display = _fix_duplicate_columns(df_display)
+            st.dataframe(df_display, width="stretch", height=420)
     else:
         st.info("⏳ 等待执行...")
     
@@ -955,12 +987,11 @@ def render_data_cleaning(df_raw, t, id_col=None):
             cols_5b = [c for c in ['芯片号','Label_Pass','Force_kg','Leveling_Mode'] if c in st.session_state['df_clean'].columns]
             # 处理重复列名（避免Arrow转换错误）
             df_display = st.session_state['df_clean'][cols_5b].head(50).copy()
-            if df_display.columns.duplicated().any():
-                cols = pd.Series(df_display.columns)
-                for dup in cols[cols.duplicated()].unique():
-                    cols[cols[cols == dup].index.values.tolist()] = [dup if i == 0 else f"{dup}_{i}" for i in range(sum(cols == dup))]
-                df_display.columns = cols
-            st.dataframe(df_display, use_container_width=True, height=420)
+            # 修复：category类型会导致Glide Data Grid渲染空白
+            for col in df_display.select_dtypes(include=['category']).columns:
+                df_display[col] = df_display[col].astype(str)
+            df_display = _fix_duplicate_columns(df_display)
+            st.dataframe(df_display, width="stretch", height=420)
     else:
         st.info("⏳ 等待执行...")
     
@@ -975,7 +1006,11 @@ def render_data_cleaning(df_raw, t, id_col=None):
         st.info(f"最终数据行数: {len(df_work)}")
         
         df_out = _reorder_final(df_work)
-        df_display = _fix_duplicate_columns(df_out.copy())
+        df_display = df_out.copy()
+        # 修复：category类型会导致Glide Data Grid渲染空白
+        for col in df_display.select_dtypes(include=['category']).columns:
+            df_display[col] = df_display[col].astype(str)
+        df_display = _fix_duplicate_columns(df_display)
         st.dataframe(df_display)
     else:
         st.info("⏳ 等待执行...")

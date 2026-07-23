@@ -166,84 +166,11 @@ st.markdown(
     outline: 2px solid {_accent} !important;
     outline-offset: 2px;
   }}
-  /* 数据框和表格 */
-  .stDataFrame {{
-    color: {_fg} !important;
-    background-color: {_card} !important;
-  }}
-  .stDataFrame * {{
-    color: {_fg} !important;
-  }}
-  .stDataFrame table {{
-    background-color: {_card} !important;
-    color: {_fg} !important;
-  }}
-  .stDataFrame table td, .stDataFrame table th {{
-    background-color: {_card} !important;
-    color: {_fg} !important;
-    border-color: {_border} !important;
-  }}
-  /* pandas dataframe 表格 */
-  div[data-testid="stDataFrame"] table {{
-    background-color: {_card} !important;
-    color: {_fg} !important;
-  }}
-  div[data-testid="stDataFrame"],
-  div[data-testid="stDataFrame"] > div,
-  div[data-testid="stDataFrame"] div,
-  div[data-testid="stDataFrame"] [role="grid"],
-  div[data-testid="stDataFrame"] [data-testid="stVirtualizedTable"],
-  div[data-testid="stDataFrame"] canvas {{
-    background-color: {_card} !important;
-    color: {_fg} !important;
-  }}
-  div[data-testid="stDataFrame"] table td, 
-  div[data-testid="stDataFrame"] table th {{
-    background-color: {_card} !important;
-    color: {_fg} !important;
-    border-color: {_border} !important;
-  }}
-  /* Glide Data Grid 编辑器（DataFrame滚动区域+单元格） */
-  .stDataFrameGlideDataEditor {{
-    background-color: {_card} !important;
-    color: {_fg} !important;
-  }}
-  .stDataFrameGlideDataEditor * {{
-    background-color: {_card} !important;
-    color: {_fg} !important;
-  }}
-  .dvn-scroller {{
-    background-color: {_card} !important;
-    color: {_fg} !important;
-  }}
-  .dvn-scroller * {{
-    background-color: {_card} !important;
-    color: {_fg} !important;
-  }}
-  .dvn-stack {{
-    background-color: {_card} !important;
-    color: {_fg} !important;
-  }}
-  .dvn-stack * {{
-    background-color: {_card} !important;
-    color: {_fg} !important;
-  }}
-  /* Glide Data Grid 单元格和行 */
-  .gdg-cell, .dvn-cell, .gdg-clip-region {{
-    background-color: {_card} !important;
-    color: {_fg} !important;
-    border-color: {_border} !important;
-  }}
-  /* 表头单元格 */
-  .gdg-header-cell, .dvn-header-cell {{
-    background-color: {_bg} !important;
-    color: {_fg} !important;
-    border-bottom: 1px solid {_border} !important;
-  }}
-  /* 选中行高亮 */
-  .gdg-cell-selected, .dvn-cell-selected {{
-    background-color: #1a3a5c !important;
-    outline-color: #5dade2 !important;
+  /* 数据框外框：内部由 Streamlit/Glide canvas 原生绘制，避免覆盖导致空白 */
+  div[data-testid="stDataFrame"] {{
+    border: 1px solid {_border};
+    border-radius: 8px;
+    overflow: hidden;
   }}
   /* 警告和信息框 */
   .stAlert {{
@@ -963,7 +890,7 @@ if 'data_schema' in st.session_state and df is not None:
                 "置信度": f"{col.confidence:.0%}",
                 "单位": col.physical_unit or "-"
             })
-        st.dataframe(pd.DataFrame(overview), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(overview), width="stretch", hide_index=True)
         
         # 如果有不确定项，提供用户确认
         uncertain = schema.get_uncertain_columns()

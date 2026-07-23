@@ -7,6 +7,8 @@ import os
 import re
 import time
 import sys
+import json
+import streamlit.components.v1 as _st_comp
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -961,7 +963,34 @@ def load_data_sidebar(t):
             t['data_compare_date_col']: new_date_col or t['data_choice_no_date'],
             t['data_compare_date_range']: new_range_label
         })
-        st.sidebar.dataframe(pd.DataFrame(compare_rows), use_container_width=True, hide_index=True)
+        compare_df = pd.DataFrame(compare_rows)
+        # Browser console log
+        try:
+            _debug_data = {
+                'shape': [int(compare_df.shape[0]), int(compare_df.shape[1])],
+                'empty': bool(compare_df.empty),
+                'columns': [str(c) for c in compare_df.columns],
+                'dtypes': {str(k): str(v) for k, v in compare_df.dtypes.items()},
+                'rows': [{str(k): str(v) for k, v in row.items()} for _, row in compare_df.iterrows()]
+            }
+            _st_comp.html(
+                f'<script>parent.console.log("[DEBUG config.py] 数据对比:", {json.dumps(_debug_data, ensure_ascii=False)})</script>',
+                height=0
+            )
+        except Exception as _e:
+            print(f"[DEBUG config.py] Browser console log failed: {_e}")
+        print(f"\n{'='*60}\n[DEBUG config.py] 数据对比 DataFrame:")
+        print(f"  shape={compare_df.shape}, empty={compare_df.empty}")
+        print(f"  columns={list(compare_df.columns)}")
+        print(f"  dtypes={dict(compare_df.dtypes)}")
+        print(f"  data={compare_df.to_dict('records')}")
+        print(f"{'='*60}\n")
+        st.sidebar.dataframe(compare_df, width="stretch", hide_index=True)
+        with st.sidebar.expander("DEBUG 数据对比", expanded=False):
+            st.write(f"shape={compare_df.shape}, empty={compare_df.empty}")
+            st.write(f"columns={list(compare_df.columns)}")
+            st.write(f"dtypes={dict(compare_df.dtypes)}")
+            st.write(compare_df)
 
         overlap_text = t['data_compare_overlap_unknown']
         if base_df is not None:
