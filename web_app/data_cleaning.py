@@ -524,7 +524,14 @@ def render_data_cleaning(df_raw, t, id_col=None):
         enable_llm = st.checkbox(
             "🔧 启用LLM增强清洗（处理复杂文本列、复合ID解析等）",
             value=False,
-            key="llm_enhance_checkbox"
+            key="llm_enhance_checkbox",
+            help="Layer 1 通用清洗无法处理的复杂文本列，由 LLM Code 模型自动生成定制清洗代码。\n\n"
+                 "自动检测三类复杂列：\n"
+                 "1. 中文+数值混合（如「真空度：-866 T:19.8℃」）\n"
+                 "2. 复合 ID 格式（如 W2024001，可拆出源码和编号）\n"
+                 "3. 数值+单位混合（如 12.5μm、185℃）\n\n"
+                 "检测到后调用 Code 模型生成 Python 清洗代码，在沙箱中安全执行。\n"
+                 "数据已规整时无需开启此选项。"
         )
 
         # 检测复杂列（如果勾选了LLM增强）
@@ -572,6 +579,20 @@ def render_data_cleaning(df_raw, t, id_col=None):
                     if l2_data.get('code'):
                         with st.expander("🔍 查看LLM生成的清洗代码"):
                             st.code(l2_data['code'], language='python')
+
+                    # 清洗前后对比：展示复杂列的转换效果
+                    if enable_llm and detected_complex:
+                        with st.expander("📊 清洗前后对比（复杂列）", expanded=True):
+                            for cc in detected_complex:
+                                col_name = cc['column']
+                                if col_name not in df_raw.columns or col_name not in cleaned_df.columns:
+                                    continue
+                                st.markdown(f"**{col_name}** — {cc['reason']}")
+                                before_after = pd.DataFrame({
+                                    "清洗前": df_raw[col_name].head(5).astype(str).values,
+                                    "清洗后": cleaned_df[col_name].head(5).astype(str).values
+                                })
+                                st.dataframe(before_after, width="stretch", hide_index=True)
 
                     # 保存到 session_state
                     st.session_state['df_clean'] = cleaned_df
@@ -621,12 +642,30 @@ def render_data_cleaning(df_raw, t, id_col=None):
                         type="primary"
                     )
 
-                    st.rerun()
+                    # 标记清洗完成（用于清洗后重刷页面时仍显示预览）
+                    st.session_state['generic_cleaning_done'] = True
 
                 except Exception as e:
                     st.error(f"清洗失败: {e}")
                     import traceback as tb
                     st.code(tb.format_exc())
+
+    # 通用清洗完成后，在页面底部持久展示清洗结果概览
+    if st.session_state.get('generic_cleaning_done') and st.session_state.get('df_clean') is not None:
+        cleaned_df = st.session_state['df_clean']
+        st.divider()
+        st.subheader("📊 清洗后数据概览")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("行数", len(cleaned_df))
+        with col2:
+            st.metric("列数", len(cleaned_df.columns))
+        with st.expander("🔍 查看清洗后数据", expanded=False):
+            df_display = cleaned_df.head(50).copy()
+            for col in df_display.select_dtypes(include=['category']).columns:
+                df_display[col] = df_display[col].astype(str)
+            df_display = _fix_duplicate_columns(df_display)
+            st.dataframe(df_display, width="stretch", height=420)
 
     # ==========================================
     
