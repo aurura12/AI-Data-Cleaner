@@ -580,20 +580,6 @@ def render_data_cleaning(df_raw, t, id_col=None):
                         with st.expander("🔍 查看LLM生成的清洗代码"):
                             st.code(l2_data['code'], language='python')
 
-                    # 清洗前后对比：展示复杂列的转换效果
-                    if enable_llm and detected_complex:
-                        with st.expander("📊 清洗前后对比（复杂列）", expanded=True):
-                            for cc in detected_complex:
-                                col_name = cc['column']
-                                if col_name not in df_raw.columns or col_name not in cleaned_df.columns:
-                                    continue
-                                st.markdown(f"**{col_name}** — {cc['reason']}")
-                                before_after = pd.DataFrame({
-                                    "清洗前": df_raw[col_name].head(5).astype(str).values,
-                                    "清洗后": cleaned_df[col_name].head(5).astype(str).values
-                                })
-                                st.dataframe(before_after, width="stretch", hide_index=True)
-
                     # 保存到 session_state
                     st.session_state['df_clean'] = cleaned_df
                     st.session_state['semiconductor_processor_state'] = {
