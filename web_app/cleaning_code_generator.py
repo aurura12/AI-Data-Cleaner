@@ -273,7 +273,7 @@ def format_cleaning_stats(stats: Dict[str, Any]) -> str:
         
         elif step_name == 'target_mapping':
             lines.append(f"📌 目标列 {step.get('column')} 映射完成")
-            lines.append(f"   良品(Pass): {step.get('after_pass_count', 0)} | "
+            lines.append(f"📌 良品(Pass): {step.get('after_pass_count', 0)} | "
                          f"不良(Fail): {step.get('after_fail_count', 0)} | "
                          f"总计: {step.get('after_total', 0)}")
         
@@ -292,10 +292,10 @@ def format_cleaning_stats(stats: Dict[str, Any]) -> str:
         lines.append(f"🤖 LLM增强清洗完成")
         detected = l2.get('detected_columns', [])
         if detected:
-            lines.append(f"   处理了 {len(detected)} 个复杂列: {', '.join(detected)}")
+            lines.append(f"📌 处理了 {len(detected)} 个复杂列: {', '.join(detected)}")
         new_cols = l2.get('new_columns', [])
         if new_cols:
-            lines.append(f"   新增 {len(new_cols)} 个衍生列")
+            lines.append(f"📌 新增 {len(new_cols)} 个衍生列")
     elif l2_status == 'no_complex_columns':
         lines.append("")
         lines.append("ℹ️ LLM增强清洗: 未检测到需要处理的复杂列")
