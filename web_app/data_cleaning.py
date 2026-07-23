@@ -681,7 +681,7 @@ def render_data_cleaning(df_raw, t, id_col=None):
             st.rerun()
 
     if processor_completed:
-        st.success("🎉 芯片数据清洗流程已全部完成！")
+        st.success("🎉 传统清洗流程已全部完成！")
 
         df_export = df_active if df_active is not None else df_work
         df_out = _reorder_final(df_export)
@@ -713,13 +713,13 @@ def render_data_cleaning(df_raw, t, id_col=None):
     # ==========================================
     clean_mode = st.radio(
         "清洗模式",
-        ["🔧 传统半导体制程清洗", "✨ 通用智能清洗"],
+        ["🔧 传统制程清洗 (Legacy)", "✨ 通用智能清洗 (Generic)"],
         index=0,
         horizontal=True,
         key="clean_mode_selector"
     )
 
-    if clean_mode == "✨ 通用智能清洗":
+    if clean_mode == "✨ 通用智能清洗 (Generic)":
         _render_llm_cleaning(df_raw, t, df_active)
         return
 

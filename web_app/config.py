@@ -70,7 +70,7 @@ TRANSLATIONS = {
         'tab_names': ["🧹 数据自动清洗", "📊 描述性统计分析", "🔍 深度挖掘", "🤖 个性化分析", "📥 完整报告"],
 
         # --- Tab 1: 半导体数据清洗 ---
-        'clean_title': "半导体数据清洗中心",
+        'clean_title': "数据清洗中心 (Data Cleaning)",
         'clean_intro': "💡 针对半导体生产数据设计的智能清洗模块，支持表头识别、特征提取和质量控制。",
 
         # === 新增模块 1: 重复处理 ===
@@ -107,7 +107,7 @@ TRANSLATIONS = {
         'outlier_res': "🔍 检测结果：[{}] 列发现 {} 个异常样本",
 
         # 新增方法论解释框的标题
-        'method_expander_title': "📘 方法论说明：半导体数据清洗策略",
+        'method_expander_title': "📘 方法论说明：传统数据清洗策略",
         
         # 用 Markdown 写一段稍微长一点的解释
         'method_explanation': """
@@ -216,7 +216,7 @@ TRANSLATIONS = {
         'ai_user_prompt_suffix': "请用中文注释，图表标题和标签建议使用中文",
 
         # ... (现有代码) ...
-        'clean_title': "半导体数据清洗中心",
+        'clean_title': "数据清洗中心 (Data Cleaning)",
         
         # 1. 重复
         'dupe_clean': "✅ 没有发现重复记录。",  # 确保这句存在

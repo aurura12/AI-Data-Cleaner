@@ -551,7 +551,7 @@ def build_static_report_html(analysis: Dict[str, Any],
     if kpi.get("value_distribution"):
         dist_items = "，".join(f"{k}: {v} 个" for k, v in kpi["value_distribution"].items())
         html.append(
-            '<div class="chart-wrapper"><img src="output/analysis_report/0_生产状态分布统计.png" '
+            '<div class="chart-wrapper"><img src="output/analysis_report/0_目标分布统计.png" '
             'alt="目标分布"></div>'
         )
         html.append(f"<p>基于全量样本（N={total}）的分析显示，目标列取值分布为：{dist_items}。</p>")
@@ -561,7 +561,7 @@ def build_static_report_html(analysis: Dict[str, Any],
     if feats:
         html.append('<h3>关键特征差异</h3>')
         html.append(
-            '<div class="chart-wrapper"><img src="output/analysis_report/2_核心特征分布_2x3_中文.png" '
+            '<div class="chart-wrapper"><img src="output/analysis_report/2_核心特征分布_2x3.png" '
             'alt="关键特征分布"></div>'
         )
         html.append("<p>以下为特征在合格与不合格样本间的统计对比：</p><ul>")

@@ -74,13 +74,12 @@ def collect_chart_files(base_dir: str) -> List[Dict[str, str]]:
             'dir': EDA_REPORT_DIR,
             'type': 'EDA分析',
             'files': [
-                ('0_生产状态分布统计.png', '生产状态分布', '展示四类生产状态的分布情况'),
-                ('1_参数相关性分析.png', '参数相关性', '关键工艺参数之间的相关性热力图'),
-                ('2_核心特征分布_2x2_中文.png', '核心特征分布', '良次品在关键参数上的分布对比'),
-                ('3_周度趋势分析.png', '周度趋势', '生产良率和产量的周度变化趋势'),
-                ('4_高度长期漂移.png', '高度漂移', '总铟柱高度随生产天数的漂移情况'),
-                ('5_位置良率分析.png', '位置良率', '各位置编码的良率排行'),
-                ('6_晶圆次序效应分析.png', '晶圆次序效应', '晶圆加工次序对良率的影响'),
+                ('0_目标分布统计.png', '目标分布', '展示目标列的分布情况'),
+                ('1_参数相关性分析.png', '参数相关性', '关键参数之间的相关性热力图'),
+                ('2_核心特征分布_2x3.png', '核心特征分布', '合格/不合格在关键参数上的分布对比'),
+                ('3_周度趋势分析.png', '周度趋势', '目标均值和产量的周度变化趋势'),
+                ('4_特征漂移分析.png', '特征漂移', '数值特征随时间的变化趋势'),
+                ('5_位置效应分析.png', '位置效应', '各位置的效应分析'),
             ]
         },
         # 注意：已移除ML分析部分，只保留EDA和位置分析
@@ -88,9 +87,9 @@ def collect_chart_files(base_dir: str) -> List[Dict[str, str]]:
             'dir': POSITION_REPORT_DIR,
             'type': '位置分析',
             'files': [
-                ('1_Position_Yield_Rate.png', '位置良率排行', '各位置编码的良率对比'),
-                ('2_Position_Failure_Detail.png', '位置缺陷详情', '各位置的缺陷类型分布堆叠图'),
-                ('3_Position_Physical_Features.png', '位置物理特征', '各位置在物理参数上的分布对比'),
+                ('1_Position_Yield_Rate.png', '位置排名', '各位置的均值对比'),
+                ('2_Position_Pass_Fail_Ratio.png', '位置占比', '各位置的结果分布堆叠图'),
+                ('3_Position_Physical_Features.png', '位置特征', '各位置在数值特征上的分布对比'),
             ]
         }
     ]
@@ -188,7 +187,7 @@ def analyze_chart_with_ollama(
 
 【业务背景】
 
-数据集：倒焊芯片生产数据（cleaned_chip_data_final.csv）
+数据集：清洗后生产数据（cleaned_data.csv）
 预测目标：二分类（{{-1虚焊, 2严重压连}} = Fail(0)；{{0正常, 1轻微压连}} = Pass(1)）
 关键特征：
 铟柱总高度（Total_Indium_Height）：核心特征，上下高度和
@@ -821,7 +820,7 @@ def generate_comprehensive_report(
 基于所有图表分析结果，生成综合评估报告，识别可能与良率下降相关的物理参数特征和数据模式，** 为产线工程师提供决策参考和排查线索**（非绝对执行指令）。分析应基于实际数据，使用客观、统计学的口吻，避免绝对化表述。
 
 【数据概况与业务逻辑】
-数据集：cleaned_chip_data_final.csv
+数据集：cleaned_data.csv
 预测目标（Label）：
 - 原始列：压连情况（-1=虚焊, 0=正常, 1=轻微压连, 2=严重压连）
 - 建模目标：二分类（Binary Classification）
@@ -848,7 +847,7 @@ def generate_comprehensive_report(
   
   <h3>1.1 压连结果分布</h3>
   <div class="chart-wrapper">
-    <img src="output/analysis_report/0_生产状态分布统计.png" alt="图表: 生产状态分布">
+    <img src="output/analysis_report/0_目标分布统计.png" alt="图表: 目标分布">
   </div>
   <p>（分析四类生产状态的分布情况，指出严重压连是主要失效原因）</p>
 
@@ -896,7 +895,7 @@ def generate_comprehensive_report(
 
 【输出要求】
 1. 必须严格按照上述HTML结构生成，包括所有div、class、style属性
-2. 使用图表路径时，必须使用相对路径（如 output/analysis_report/0_生产状态分布统计.png）
+2. 使用图表路径时，必须使用相对路径（如 output/analysis_report/0_目标分布统计.png）
 3. **重要：分析内容必须直接插入到对应图像下方**
    - 每张图表下方必须紧跟着该图表的详细分析（包括detailed_analysis、key_findings、process_suggestions等）
    - 工艺优化建议（process_suggestions）必须直接放在对应图表的分析段落中，不要单独总结

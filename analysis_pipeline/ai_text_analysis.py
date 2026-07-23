@@ -130,7 +130,7 @@ def generate_text_based_report(
             content = re.sub(r'<h2>3\. 时间、空间维度</h2>', '<h2>3. 工艺与设备维度深潜</h2>', content)
             content = re.sub(r'<h3>3\.1\s*时间稳定性与参数漂移.*?(?=<h3>|</div>)', '', content, flags=re.S)
             content = re.sub(r'<div class="chart-wrapper">.*?3_周度趋势分析.*?</div>\s*<p>.*?</p>', '', content, flags=re.S)
-            content = re.sub(r'<div class="chart-wrapper">.*?4_高度长期漂移.*?</div>\s*<p>.*?</p>', '', content, flags=re.S)
+            content = re.sub(r'<div class="chart-wrapper">.*?4_特征漂移分析.*?</div>\s*<p>.*?</p>', '', content, flags=re.S)
             content = re.sub(r'<h3>3\.\d+\s*晶圆批次效应分析.*?(?=<h3>|</div>)', '', content, flags=re.S)
             content = re.sub(r'<div class="chart-wrapper">.*?6_晶圆次序效应分析.*?</div>\s*<p>.*?</p>', '', content, flags=re.S)
             content = re.sub(r'<h3>3\.2\s*位置编码异质性分析', '<h3>3.1 位置编码异质性分析', content)

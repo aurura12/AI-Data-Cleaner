@@ -8,10 +8,12 @@
   4. 位置效应分析
   5. AI 文本解读
   6. 生成 HTML 报告
+
+支持 --cleaning legacy|generic 参数切换清洗模式。
 """
 import os
-import subprocess
 import sys
+import argparse
 
 # 将项目根目录加入路径
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -25,25 +27,63 @@ from project_paths import (
     PIPELINE_DIR,
 )
 
+# 解析命令行参数
+parser = argparse.ArgumentParser(description='运行完整数据分析流水线')
+parser.add_argument('--cleaning', choices=['legacy', 'generic'], default='legacy',
+                    help='数据清洗模式: legacy=传统制程清洗, generic=通用智能清洗')
+parser.add_argument('--input', type=str, default=None,
+                    help='输入数据文件路径（覆盖默认路径）')
+args = parser.parse_args()
+
+CLEANING_MODE = args.cleaning
+INPUT_FILE = args.input or RAW_DATA_FILE
+
 print("=" * 60)
-print("🚀 开始执行完整分析流程")
+print(f"🚀 开始执行完整分析流程 (清洗模式: {CLEANING_MODE})")
 print("=" * 60)
 
 # 1. 数据清洗
-print("\n[步骤 1/6] 数据清洗...")
-try:
-    from data_cleaning import clean_data_from_file
+print(f"\n[步骤 1/6] 数据清洗 (模式: {CLEANING_MODE})...")
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+if CLEANING_MODE == "generic":
+    # 通用智能清洗（Schema驱动 + LLM增强）
+    try:
+        import pandas as pd
+        from cleaning_code_generator import run_cleaning_pipeline
+        from domain_adapter import load_or_build_schema
 
-    if os.path.exists(RAW_DATA_FILE):
-        result = clean_data_from_file(RAW_DATA_FILE, CLEANED_DATA_FILE)
-        if result is None:
-            print("⚠️ 数据清洗失败，但继续执行后续步骤...")
-    else:
-        print(f"⚠️ 找不到输入文件 {RAW_DATA_FILE}，跳过数据清洗步骤...")
-except Exception as e:
-    print(f"⚠️ 数据清洗异常: {e}，但继续执行后续步骤...")
+        print(f"使用通用清洗模式，读取数据: {INPUT_FILE}")
+        df_raw = pd.read_csv(INPUT_FILE, encoding='utf-8-sig', low_memory=False)
+        print(f"读取数据: {len(df_raw)} 行, {len(df_raw.columns)} 列")
+
+        schema = load_or_build_schema(cleaned_csv=INPUT_FILE, force=True)
+        cleaned_df, stats = run_cleaning_pipeline(
+            df_raw, schema,
+            enable_llm_enhanced=True,
+        )
+
+        cleaned_df.to_csv(CLEANED_DATA_FILE, index=False, encoding='utf-8-sig')
+        print(f"✅ 通用清洗完成: {len(cleaned_df)} 行, {len(cleaned_df.columns)} 列")
+    except Exception as e:
+        print(f"⚠️ 通用清洗失败 ({e})，回退到传统清洗模式...")
+        CLEANING_MODE = "legacy"
+
+if CLEANING_MODE == "legacy":
+    # 传统半导体制程清洗
+    try:
+        from data_cleaning import clean_data_from_file
+
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+        if os.path.exists(INPUT_FILE):
+            result = clean_data_from_file(INPUT_FILE, CLEANED_DATA_FILE)
+            if result is None:
+                print("⚠️ 数据清洗失败，但继续执行后续步骤...")
+        else:
+            print(f"⚠️ 找不到输入文件 {INPUT_FILE}，跳过数据清洗步骤...")
+    except Exception as e:
+        print(f"⚠️ 数据清洗异常: {e}，但继续执行后续步骤...")
 
 # 1.5 构建并持久化 DataSchema（贯穿下游分析/报告，领域无关的关键）
 try:
@@ -55,6 +95,7 @@ except Exception as e:
 
 # 2. EDA 分析
 print("\n[步骤 2/6] EDA 探索性数据分析...")
+import subprocess
 subprocess.run([sys.executable, os.path.join(PIPELINE_DIR, "eda_analysis.py")])
 
 # 3. 机器学习分析
