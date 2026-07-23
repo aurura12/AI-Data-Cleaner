@@ -595,7 +595,7 @@ def render_data_cleaning(df_raw, t, id_col=None):
 
                     # 展示清洗统计
                     stats_text = cleaning_code_generator.format_cleaning_stats(stats)
-                    st.info(stats_text)
+                    st.info(stats_text.replace('\n', '  \n'))
 
                     # 数据预览
                     st.markdown("#### 清洗后数据预览")
@@ -705,7 +705,7 @@ def render_data_cleaning(df_raw, t, id_col=None):
             st.success(t.get('reset_success'))
             st.rerun()
 
-    if processor_completed:
+    if processor_completed and st.session_state.get('clean_mode_selector') != "✨ 通用智能清洗 (Generic)":
         st.success("🎉 传统清洗流程已全部完成！")
 
         df_export = df_active if df_active is not None else df_work
@@ -728,10 +728,6 @@ def render_data_cleaning(df_raw, t, id_col=None):
         )
     
     st.divider()
-
-    # --- 方法论说明 ---
-    with st.expander(t.get('method_expander_title'), expanded=False):
-        st.info(t.get('method_explanation'))
 
     # ==========================================
     # 清洗模式选择（传统 vs 通用智能清洗）
