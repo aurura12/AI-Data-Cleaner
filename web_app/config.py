@@ -33,7 +33,7 @@ matplotlib.use('Agg')
 TRANSLATIONS = {
     '中文': {
         # --- 基础/侧边栏 ---
-        'page_title': "AI半导体生产助手",
+        'page_title': "AI 数据分析助手",
         'sidebar_header': "1. 数据源",
         'sidebar_settings': "2. 变量设置",
         'select_target': "选择目标变量 (Y)",
@@ -69,9 +69,9 @@ TRANSLATIONS = {
         'data_choice_file_time': "文件时间",
         'tab_names': ["🧹 数据自动清洗", "📊 描述性统计分析", "🔍 深度挖掘", "🤖 个性化分析", "📥 完整报告"],
 
-        # --- Tab 1: 半导体数据清洗 ---
+        # --- Tab 1: 数据清洗 ---
         'clean_title': "数据清洗中心 (Data Cleaning)",
-        'clean_intro': "💡 针对半导体生产数据设计的智能清洗模块，支持表头识别、特征提取和质量控制。",
+        'clean_intro': "💡 智能数据清洗模块，支持表头识别、特征提取和质量控制。",
 
         # === 新增模块 1: 重复处理 ===
         'sect_dupe': "0. 数据去重 (Deduplication)",
@@ -81,13 +81,13 @@ TRANSLATIONS = {
 
         # === 新增模块 2: 类型修正 ===
         'sect_type': "0.5 数据类型修正",
-        'type_info': "警告：下列半导体参数看起来是数字，但存储为文本（可能是因为混入了字符）：",
+        'type_info': "警告：下列数值参数看起来是数字，但存储为文本（可能是因为混入了字符）：",
         'btn_type_fix': "🔧 强制转为数值 (非法字符变为空值)",
         'type_clean': "✅ 所有数值型参数格式正常。",
 
         # === 新增模块 3: 逻辑检查 ===
-        'sect_logic': "1. 半导体参数逻辑检查 (负值检测)",
-        'logic_info': "警告：在半导体物理参数中发现 **{}** 个负数值（通常属于录入错误）。",
+        'sect_logic': "1. 数值参数逻辑检查 (负值检测)",
+        'logic_info': "警告：在物理参数中发现 **{}** 个负数值（通常属于录入错误）。",
         'btn_logic_fix': "🔧 将负数设为空值 (NaN) 以便后续填补",
         
         # 缺失值部分
@@ -130,9 +130,9 @@ TRANSLATIONS = {
 
         # --- 新增：数据流转与确认 ---
         'data_flow_panel': "📊 当前分析数据集状态",
-        'rows_info': "当前样本量: **{}** 片 | 原始样本量: {} 片",
+        'rows_info': "当前样本量: **{}** 条 | 原始样本量: {} 条",
         'btn_apply_remove': "✂️ 确认剔除选中的异常样本 (并保存)",
-        'apply_success': "✅ 数据已更新！已剔除 {} 片半导体数据。现在用这版干净数据进行下一步分析。",
+        'apply_success': "✅ 数据已更新！已剔除 {} 条异常数据。现在用这版干净数据进行下一步分析。",
         'btn_reset': "🔄 重置回原始数据",
         'reset_success': "数据已重置为上传时的初始状态。",
         'confirm_tip': "💡 重要提示：不同的检测方法结果不同。请仔细查看下方详情，确认是你想要剔除的样本，再点击“确认剔除”。",
@@ -142,7 +142,7 @@ TRANSLATIONS = {
         'ai_report_not_found': "ℹ️ 尚未生成描述性报告。请先运行完整的数据分析流程。",
         
         # --- 保留：描述性统计 (Table 1) 用于其他场景 ---
-        't1_title': "📊 半导体生产统计分析",
+        't1_title': "📊 数据统计分析",
         't1_group_by': "📌 分组变量: **{}** (用于计算 P-value)",
         't1_warning_multiclass': "⚠️ 注意：自动 P 值计算仅支持 **二分类** 变量 (如: 合格 vs 不合格)。多分类仅展示均值/频率。",
         't1_info_no_target': "ℹ️ 未选择目标变量，仅展示整体描述性统计 (无法计算 P 值)。",
@@ -161,8 +161,8 @@ TRANSLATIONS = {
         """,
         
         # --- Tab 3: XGBoost 分析 (修复这里) ---
-        'status_using_clean': "✅ 正在使用清洗后的半导体数据进行分析",
-        'cart_title': "半导体生产质量建模",
+        'status_using_clean': "✅ 正在使用清洗后的数据进行分析",
+        'cart_title': "数据质量建模",
         'cart_title_suffix': "(含交叉验证与SHAP)",  # <--- 新增
         'missing_target': "⚠️ 请在左侧侧边栏选择正确的目标变量",
         'settings_expander': "⚙️ 分析参数设置",        # <--- 新增
@@ -174,12 +174,12 @@ TRANSLATIONS = {
         # 结果指标
         'metrics_title': "1. 模型预测效能 (Test Set)",
         'auc_label': "AUC (区分度)",
-        'auc_help': "0.8-1.0为优秀。反映模型区分合格和不合格半导体的能力。",
+        'auc_help': "0.8-1.0为优秀。反映模型区分合格和不合格数据的能力。",
         'acc_label': "Accuracy (准确率)",
         'sens_label': "敏感度 (Sensitivity)",
-        'sens_help': "能检测出多少真正不合格的半导体（不漏检）",
+        'sens_help': "能检测出多少真正不合格的数据（不漏检）",
         'spec_label': "特异度 (Specificity)",
-        'spec_help': "能准确识别多少合格的半导体（不误判）",
+        'spec_help': "能准确识别多少合格的数据（不误判）",
         'cm_title': "查看详细混淆矩阵",
         
         # SHAP
@@ -206,8 +206,8 @@ TRANSLATIONS = {
         """,
         'ai_input_label': "请输入分析指令:",   # <--- 新增
         'ai_placeholder': "请输入分析需求 (例如: 画图展示铟柱高度分布)",
-        'ai_powered_clean': "🚀 由阿里云大模型驱动 (正在分析 {len} 片清洗后的半导体数据)", # <--- 新增
-        'ai_powered_raw': "🚀 由阿里云大模型驱动 (正在分析原始半导体数据)", # <--- 新增
+        'ai_powered_clean': "🚀 由AI大模型驱动 (正在分析 {len} 条清洗后的数据)", # <--- 新增
+        'ai_powered_raw': "🚀 由AI大模型驱动 (正在分析原始数据)", # <--- 新增
         'btn_run_ai': "执行分析",
         'ai_thinking_msg': "AI 正在编写代码...",
         'view_code': "👀 查看 AI 生成的代码",
@@ -237,7 +237,7 @@ TRANSLATIONS = {
         'missing_found': "⚠️ 共发现 {num} 个缺失值",
         'if_error': "⚠️ 孤立森林算法要求数据不能有缺失值，请先执行第4步修复。",
         'btn_scan': "🔍 开始扫描",
-        'outlier_found': "🔴 发现 **{num}** 片异常半导体数据",
+        'outlier_found': "🔴 发现 **{num}** 条异常数据",
         'show_details': "展开查看详情",
 
         # --- 新增的通用字段 ---
@@ -269,7 +269,7 @@ TRANSLATIONS = {
         "ai_exp_raw_data": "📊 查看运行结果数据 (Print Output)",
         "ai_status_analyzing": "💡 AI 正在解读分析结果...",
         # 注意：这一条决定了 AI 回复的语言
-        "ai_prompt_insight_req": "请根据以上半导体生产数据给出一个简明扼要的结论或见解（1-2句）。", 
+        "ai_prompt_insight_req": "请根据以上数据给出一个简明扼要的结论或见解（1-2句）。", 
         "ai_insight_title": "AI 洞察",
         "ai_err_insight": "生成分析结论时出错",
         "ai_msg_no_stats": "由于未检测到文本统计输出，暂无文字版深度分析（可能图表已足够直观）。"
@@ -986,11 +986,6 @@ def load_data_sidebar(t):
         print(f"  data={compare_df.to_dict('records')}")
         print(f"{'='*60}\n")
         st.sidebar.dataframe(compare_df, width="stretch", hide_index=True)
-        with st.sidebar.expander("DEBUG 数据对比", expanded=False):
-            st.write(f"shape={compare_df.shape}, empty={compare_df.empty}")
-            st.write(f"columns={list(compare_df.columns)}")
-            st.write(f"dtypes={dict(compare_df.dtypes)}")
-            st.write(compare_df)
 
         overlap_text = t['data_compare_overlap_unknown']
         if base_df is not None:
