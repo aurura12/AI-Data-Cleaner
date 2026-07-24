@@ -676,11 +676,11 @@ def render_ai_report(t, df_active=None):
                 span {{ color: {text_color}; }}
                 .analysis-box {{ 
                     background: {'#3a3024' if theme=='dark' else '#fdf6ec'}; 
-                    border-left: 4px solid #e6a23c; padding: 15px; margin: 15px 0; border-radius: 4px;
+                    border-left: 4px solid {'#f0c040' if theme=='dark' else '#e6a23c'}; padding: 15px; margin: 15px 0; border-radius: 4px;
                 }}
                 .advice-item {{ 
                     background: {'#2d4a1f' if theme=='dark' else '#e8f5e9'}; 
-                    border-left: 4px solid #4caf50; padding: 12px; margin: 10px 0; border-radius: 4px;
+                    border-left: 4px solid {'#66bb6a' if theme=='dark' else '#4caf50'}; padding: 12px; margin: 10px 0; border-radius: 4px;
                 }}
                 .tech-pill {{
                     display: inline-block; background: {'#1a4a6a' if theme=='dark' else '#e3f2fd'};
@@ -787,9 +787,13 @@ def render_ai_report(t, df_active=None):
         if theme == 'dark':
             bg_color, text_color, card_bg = "#1e1e1e", "#ecf0f1", "#2d2d2d"
             primary = "#5dade2"
+            danger_color = "#ff6b6b"
+            warning_color = "#ffb347"
         else:
             bg_color, text_color, card_bg = "#f5f7fa", "#2c3e50", "#ffffff"
             primary = "#3498db"
+            danger_color = "#e74c3c"
+            warning_color = "#f39c12"
         
         st.markdown(
             f"""
@@ -838,8 +842,8 @@ def render_ai_report(t, df_active=None):
                     line-height: 1;
                 }}
                 .kpi-card-value.primary {{ color: {primary} !important; }}
-                .kpi-card-value.danger {{ color: #e74c3c !important; }}
-                .kpi-card-value.warning {{ color: #f39c12 !important; }}
+                .kpi-card-value.danger {{ color: {danger_color} !important; }}
+                .kpi-card-value.warning {{ color: {warning_color} !important; }}
                 .kpi-card-sub {{
                     font-size: 13px;
                     color: {text_color} !important;

@@ -68,6 +68,10 @@ st.markdown(
   .stApp * {{
     color: {_fg} !important;
   }}
+  /* 语法高亮保护：撤销通配符强覆盖，让代码块 span 保留内联颜色 */
+  div[data-testid="stCodeBlock"] pre code span {{
+    color: revert !important;
+  }}
   section[data-testid="stSidebar"] {{
     background: {_card};
     border-right: 1px solid {_border};
@@ -214,12 +218,18 @@ st.markdown(
   h1, h2, h3, h4, h5, h6 {{
     color: {_fg} !important;
   }}
-  /* 代码块 */
-  .stCodeBlock {{
+  /* 代码块 - 深色模式：深底浅字，保留语法高亮 */
+  div[data-testid="stCodeBlock"],
+  div[data-testid="stCodeBlock"] > div,
+  div[data-testid="stCodeBlock"] > div > div {{
     background-color: {_card} !important;
     color: {_fg} !important;
   }}
-  .stCodeBlock * {{
+  .stCodeBlock pre,
+  div[data-testid="stCodeBlock"] pre,
+  .stCodeBlock code,
+  div[data-testid="stCodeBlock"] code {{
+    background-color: {_card} !important;
     color: {_fg} !important;
   }}
   /* 展开器 */
