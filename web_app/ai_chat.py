@@ -40,6 +40,25 @@ def _init_chinese_font():
         
     return font_name
 
+
+def _get_generic_domain_context(df_curr) -> str:
+    """无 schema 时的纯通用 domain context（无任何行业知识）。"""
+    numeric_cols = [c for c in df_curr.select_dtypes(include=[np.number]).columns][:10]
+    cat_cols = [c for c in df_curr.select_dtypes(include=['object']).columns][:10]
+
+    lines = ["Domain Context & Column Meanings:"]
+    if numeric_cols:
+        lines.append(f"- **Numeric Features**: {', '.join(numeric_cols)}.")
+    if cat_cols:
+        lines.append(f"- **Categorical Features**: {', '.join(cat_cols)}.")
+    lines.append(
+        "- **Analysis Tips**: \n"
+        "  - To analyze patterns, compare feature distributions between groups.\n"
+        "  - For categorical features, use Bar charts to compare group rates."
+    )
+    return "\n".join(lines)
+
+
 def get_data_info(df):
     """
     提供最基础的数据信息，保证代码不报错
@@ -111,7 +130,7 @@ def render_ai_dashboard(df, t, client, target_col=None, schema=None):
         # [i18n] 输入框占位符
         user_query = st.text_input(
             safe_get('ai_input_label', '告诉 AI 你想分析什么...'), 
-            placeholder=safe_get('ai_placeholder_input', '例如：分析良率随时间的变化趋势')
+            placeholder=safe_get('ai_placeholder_input', '例如：分析主要结果的变化趋势')
         )
     with col2:
         st.write("")
@@ -125,7 +144,7 @@ def render_ai_dashboard(df, t, client, target_col=None, schema=None):
         # --- Domain Knowledge Injection (动态构建) ---
         if schema and schema.columns:
             # 从 schema 动态构建
-            target_name = schema.get_target_column_name()
+            target_name = schema.get_target_column()
             target_desc = ""
             if target_name:
                 pass_label = schema.pass_label or 'Pass'
@@ -181,25 +200,15 @@ def render_ai_dashboard(df, t, client, target_col=None, schema=None):
                     f"are float. Use `pd.to_numeric(df['col'], errors='coerce')` to be safe.\n"
                 )
         else:
-            # 无 schema 时回退到硬编码半导体上下文
-            domain_context = (
-                "Domain Context & Column Meanings:\n"
-                "- **Target Variable**: 'Label_Pass' (1=Pass/Good, 0=Fail/Bad). Use this to analyze yield/quality.\n"
-                "- **Key Process Parameters (Inputs)**: 'Force_kg' (Bonding Force), 'Equipment_Temp' (Temp), 'Vacuum_Level', 'Leveling_Mode' (Laser vs Cross).\n"
-                "- **Key Physical Measurements**: 'Total_Indium_Height', 'Indium_Taper_Zscore', '铟柱上底(CD)' (Upper Diameter), '铟柱下底(CD)' (Lower Diameter).\n"
-                "- **Time/Batch**: 'Process_Date', 'Time_Seq_Day', 'Batch_ID', 'Wafer_Index'.\n"
-                "- **Analysis Tips**: \n"
-                "  - To analyze 'Yield' or 'Failure', compare Process Parameters distribution between Pass(1) and Fail(0) groups (e.g., Boxplots).\n"
-                "  - 'Leveling_Mode' is categorical. Use Bar charts to compare pass rates between modes.\n"
-            )
+            # 无 schema 时使用纯通用上下文
+            domain_context = _get_generic_domain_context(df_curr)
             target_rules = (
-                "   - **Target Variable**: 'Label_Pass' is numeric (1=Pass, 0=Fail). "
-                "If using it as a grouping variable (hue), you MUST map it to strings first: "
-                "`df['Status'] = df['Label_Pass'].map({{1:'Pass', 0:'Fail'}})`.\n"
+                "   - **Target Variable**: Not auto-detected. Look for a column named like "
+                "'defect', 'quality', 'status', 'result', 'label' with few unique values "
+                "(e.g., 0=Good, 1=Bad). Use `value_counts()` to inspect.\n"
             )
             numeric_safety = (
-                "   - **Numeric Safety**: Ensure physical parameters ('Equipment_Temp', 'Vacuum_Level', "
-                "'Force_kg', 'Total_Indium_Height', 'Calc_Circuit_Range') are float. "
+                "   - **Numeric Safety**: If plotting numeric columns, ensure they are float. "
                 "Use `pd.to_numeric(df['col'], errors='coerce')` to be safe.\n"
             )
 
@@ -218,20 +227,19 @@ def render_ai_dashboard(df, t, client, target_col=None, schema=None):
             f"   - **Drop NaNs**: If plotting a specific column, drop NaNs for that column to avoid errors.\n"
 
             f"4. **CRITICAL - AVOID OVERPLOTTING (High Cardinality)**:\n"
-            f"   - Columns like '芯片号' (Chip ID), 'Batch_ID', 'Time_Seq_Day' might have too many unique values.\n"
-            f"   - **DO NOT** use them as x-axis directly unless you aggregate them.\n"
+            f"   - Columns with many unique values should not be used as x-axis directly unless aggregated.\n"
             f"   - **Strategy**: \n"
-            f"     a) Group by the column and calculate mean/sum (e.g., `df.groupby('Batch_ID')['Label_Pass'].mean()`).\n"
+            f"     a) Group by the column and calculate mean/sum (e.g., `df.groupby('col')['target'].mean()`).\n"
             f"     b) Or filter to Top 10 / Bottom 10 items if specific IDs are requested.\n"
             f"     c) Or use Histograms/Boxplots to show the overall distribution instead of individual points.\n"
             
             f"5. **CRITICAL - AGGREGATION RULES**:\n"
             f"   - When using `.mean()`, `.sum()`, etc., ALWAYS specify `numeric_only=True`.\n"
-            f"   - Better yet, select explicit columns: `df[['Equipment_Temp', 'Label_Pass']].groupby('Equipment_Temp').mean()`.\n"
+            f"   - Better yet, select explicit columns: `df[['col1', 'target']].groupby('col1').mean()`.\n"
             
             f"6. **CRITICAL - PRINT STATS (Input for Analysis)**:\n"
             f"   - You **MUST** `print()` the statistics derived from the chart. \n"
-            f"   - Example: If plotting Failure Rate vs Temp, print: `print(df.groupby('Equipment_Temp')['Label_Pass'].mean())`.\n"
+            f"   - Example: `print(df.groupby('category_col')['target'].mean())`.\n"
             f"   - This text output is REQUIRED for the AI analyst to generate the report.\n"
 
             f"7. **Layout & Formatting**:\n"
@@ -246,7 +254,7 @@ def render_ai_dashboard(df, t, client, target_col=None, schema=None):
         messages_coder = [
             {
                 "role": "system",
-                "content": "You are a data analyst focusing on semiconductor device manufacturing data. "
+                "content": "You are a professional data analyst. Generate only Pandas/Matplotlib/Seaborn code to analyze data and create clear visualizations. " 
                            "Always print the statistics you visualize."
             },
             {"role": "user", "content": prompt_coder}

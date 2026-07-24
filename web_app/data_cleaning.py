@@ -508,6 +508,21 @@ def render_data_cleaning(df_raw, t, id_col=None):
 
         st.success(f"📋 Schema 已就绪：{len(schema.columns)} 列，目标列: {schema.target_column or '未识别'}")
 
+        # 展示 LLM 业务理解结果
+        if schema.business_domain:
+            st.info(f"🏭 LLM识别业务领域：{schema.business_domain}")
+        if schema.quality_issues:
+            with st.expander("🔍 LLM 检测到的数据质量问题"):
+                for qi in schema.quality_issues[:10]:
+                    col = qi.get('column', '') or '全局'
+                    sev = qi.get('severity', 'medium')
+                    icon = {'high': '🔴', 'medium': '🟡', 'low': '🔵'}.get(sev, '⚪')
+                    st.markdown(f"{icon} **[{sev.upper()}]** {col}：{qi.get('issue', '')}")
+            if schema.cleaning_recommendations:
+                st.markdown("**💡 LLM清洗建议：**")
+                for rec in schema.cleaning_recommendations:
+                    st.markdown(f"- {rec}")
+
         # 展示schema概览
         with st.expander("查看数据 Schema 详情"):
             overview = []
@@ -522,17 +537,24 @@ def render_data_cleaning(df_raw, t, id_col=None):
 
         # ── LLM增强清洗选项 ──
         enable_llm = st.checkbox(
-            "🔧 启用LLM增强清洗（处理复杂文本列、复合ID解析等）",
-            value=False,
+            "🔧 启用LLM增强清洗（基于业务理解生成定制清洗代码）",
+            value=True,
             key="llm_enhance_checkbox",
-            help="Layer 1 通用清洗无法处理的复杂文本列，由 LLM Code 模型自动生成定制清洗代码。\n\n"
-                 "自动检测三类复杂列：\n"
-                 "1. 中文+数值混合（如「真空度：-866 T:19.8℃」）\n"
-                 "2. 复合 ID 格式（如 W2024001，可拆出源码和编号）\n"
-                 "3. 数值+单位混合（如 12.5μm、185℃）\n\n"
-                 "检测到后调用 Code 模型生成 Python 清洗代码，在沙箱中安全执行。\n"
-                 "数据已规整时无需开启此选项。"
+            help="Schema 分析阶段已通过LLM理解业务逻辑。勾选后将自动调用 Code 模型生成针对性的清洗代码。\n\n"
+                 "覆盖范围：\n"
+                 "1. 日期格式统一\n"
+                 "2. 缺失值处理（按业务推荐策略）\n"
+                 "3. 异常值检测与处理\n"
+                 "4. 业务重复行删除\n"
+                 "5. 目标列映射\n"
+                 "（不勾选则只执行 Layer 1 基础规则清洗）"
         )
+
+        # 展示 LLM 检测到的问题概要（无论是否勾选LLM增强）
+        if schema.quality_issues and not enable_llm:
+            high_count = sum(1 for q in schema.quality_issues if q.get('severity') == 'high')
+            if high_count > 0:
+                st.warning(f"⚠️ Schema分析检测到 {high_count} 个高风险问题，建议启用LLM增强清洗")
 
         # 检测复杂列（如果勾选了LLM增强）
         detected_complex = []
@@ -540,12 +562,11 @@ def render_data_cleaning(df_raw, t, id_col=None):
             with st.spinner("正在检测需要增强处理的列..."):
                 detected_complex = cleaning_code_generator.detect_complex_columns(df_raw, schema)
             if detected_complex:
-                st.info(f"检测到 {len(detected_complex)} 个列需要LLM增强处理:")
-                for cc in detected_complex:
-                    st.caption(f"  - {cc['column']}: {cc['reason']}")
-                    st.caption(f"    样本: {cc['samples'][:3]}")
-            else:
-                st.success("未检测到需要LLM增强处理的列")
+                high_issues = [d for d in detected_complex if d.get('severity') == 'high']
+                if high_issues:
+                    st.warning(f"检测到 {len(high_issues)} 个高风险问题需要处理:")
+                    for d in high_issues[:5]:
+                        st.caption(f"  - {d['column']}: {d['reason']}")
 
         # 清洗按钮
         col1, col2 = st.columns([1, 3])
@@ -574,11 +595,19 @@ def render_data_cleaning(df_raw, t, id_col=None):
                         target_column_override=target_override
                     )
 
-                    # Layer 2: 如果有生成的代码，展示给用户
+                    # Layer 2: 如果有生成的代码或检测到问题，展示给用户
                     l2_data = stats.get('layer2', {})
                     if l2_data.get('code'):
-                        with st.expander("🔍 查看LLM生成的清洗代码"):
+                        with st.expander("🔍 查看LLM生成的清洗代码", expanded=True):
                             st.code(l2_data['code'], language='python')
+                            # 显示检测到的问题
+                            detected = l2_data.get('detected_issues', [])
+                            if detected:
+                                st.markdown("**LLM检测到的问题：**")
+                                for d in detected:
+                                    sev = d.get('severity', 'medium')
+                                    icon = {'high': '🔴', 'medium': '🟡', 'low': '🔵'}.get(sev, '⚪')
+                                    st.caption(f"{icon} {d.get('column', '全局')}: {d.get('reason', '')}")
 
                     # 保存到 session_state
                     st.session_state['df_clean'] = cleaned_df
@@ -595,7 +624,7 @@ def render_data_cleaning(df_raw, t, id_col=None):
 
                     # 展示清洗统计
                     stats_text = cleaning_code_generator.format_cleaning_stats(stats)
-                    st.info(stats_text.replace('\n', '  \n'))
+                    st.code(stats_text, language=None)
 
                     # 数据预览
                     st.markdown("#### 清洗后数据预览")
@@ -637,6 +666,10 @@ def render_data_cleaning(df_raw, t, id_col=None):
                     st.code(tb.format_exc())
 
     # 通用清洗完成后，在页面底部持久展示清洗结果概览
+    _show_cleaning_result_if_done()
+
+def _show_cleaning_result_if_done():
+    """如果通用清洗已完成，展示清洗结果概览（不依赖当前清洗模式）"""
     if st.session_state.get('generic_cleaning_done') and st.session_state.get('df_clean') is not None:
         cleaned_df = st.session_state['df_clean']
         st.divider()
@@ -732,17 +765,25 @@ def render_data_cleaning(df_raw, t, id_col=None):
     # ==========================================
     # 清洗模式选择（传统 vs 通用智能清洗）
     # ==========================================
+    # 用 session_state 记住用户上次的选择，下载后 rerun 不会丢失
+    if 'clean_mode_value' not in st.session_state:
+        st.session_state['clean_mode_value'] = "✨ 通用智能清洗 (Generic)"
+    
     clean_mode = st.radio(
         "清洗模式",
         ["🔧 传统制程清洗 (Legacy)", "✨ 通用智能清洗 (Generic)"],
-        index=0,
+        index=1 if st.session_state['clean_mode_value'] == "✨ 通用智能清洗 (Generic)" else 0,
         horizontal=True,
         key="clean_mode_selector"
     )
+    st.session_state['clean_mode_value'] = clean_mode
 
     if clean_mode == "✨ 通用智能清洗 (Generic)":
         _render_llm_cleaning(df_raw, t, df_active)
         return
+
+    # 传统模式：如果通用清洗已经完成过，也展示结果
+    _show_cleaning_result_if_done()
 
     # --- 方法论说明（仅传统清洗显示） ---
     with st.expander(t.get('method_expander_title'), expanded=False):
@@ -1088,36 +1129,32 @@ def render_deep_mining(df, t, target_col, id_col=None):
                 # Generate analysis if not already present
                 if 'analysis_text' not in res:
                      with st.spinner(f"正在分析 {res['chart_name']}..."):
-                        prompt = f"""你现在是一位半导体良率优化专家。
+                        # 从 session 获取 schema（由 schema_analyzer 阶段生成）
+                        _analysis_schema = st.session_state.get('schema', None)
+                        _schema_ctx = ""
+                        try:
+                            from analysis_pipeline.domain_adapter import describe_schema_for_llm
+                            _schema_ctx = describe_schema_for_llm(_analysis_schema)
+                        except Exception:
+                            pass
 
-【任务目标】
-基于以下统计数据和分析摘要，分析该图表所反映的工艺特征，识别可能与良率下降相关的物理参数特征和数据模式。
+                        prompt = f"""你是一位数据分析专家。基于以下数据进行分析。
 
-【业务背景与数据字典】
-1. 预测目标：Is_Pass (0=不良/Fail, 1=良品/Pass)。**重点关注导致 Is_Pass=0 的参数区间。**
-2. 关键参数含义：
-   - Equipment_Temp：设备温度（影响焊料熔融与流动性）。
-   - Vacuum_Level：真空度（影响气泡排出与空洞率）。
-   - Force_kg：倒焊压力（影响接合致密性）。
-   - Total_Indium_Height：铟柱总高度。
-   - Calc_Circuit_Range：电路表面平整度。
-   - Time_Seq_Day：设备连续运行天数（漂移指标）。
-注意铟柱总高度由上一道工艺确定，与倒焊压力无关。
+{_schema_ctx}
+
 【数据摘要】
 {res['data_description']}
 
 【分析要求】
-1. 根据相应数据识别潜在模式（是否存在**温度/真空/压力**等物理参数的特定区间与低良率强相关）。
-3. 关联业务逻辑（结合物理意义，分析为何某些参数组合会导致Fail）。
-4. 提出参考建议（柔性表述）。
+1. 识别数据中的潜在模式与异常。
+2. 分析哪些特征或参数对结果影响较大。
+3. 提出参考建议（柔性表述）。
 
 【输出格式要求】
-请严格按照以下JSON格式输出，不要添加任何其他文字：
-{{
-"key_findings": ["数据观察1", "数据观察2"],
-"process_suggestions": "针对工艺参数（特别是温度、真空、压力等）的排查建议",
-"detailed_analysis": "详细分析文本"
-}}
+请严格解析 JSON 格式输出，不要添加任何其他文字：
+{{"key_findings": ["数据观察1", "数据观察2"],
+"process_suggestions": "改进建议",
+"detailed_analysis": "详细分析文本"}}
 """
                         try:
                             response = utils.get_ai_client().chat.completions.create(
@@ -1234,37 +1271,45 @@ def render_deep_mining(df, t, target_col, id_col=None):
         if 'final_suggestions' in st.session_state and st.session_state['final_suggestions']:
             suggestions = st.session_state['final_suggestions'].get('suggestions', [])
             
-            st.markdown("""
+            theme = st.session_state.get('theme', 'dark')
+            if theme == 'dark':
+                sc_border = "#4caf50"
+                sc_shadow = "0 2px 12px 0 rgba(255, 255, 255, 0.08)"
+            else:
+                sc_border = "#67c23a"
+                sc_shadow = "0 2px 12px 0 rgba(0, 0, 0, 0.05)"
+
+            st.markdown(f"""
             <style>
-            .suggestion-card {
+            .suggestion-card {{
                 background-color: var(--secondary-background-color);
                 border-radius: 8px;
                 padding: 20px;
                 margin-bottom: 15px;
-                border-left: 5px solid #67c23a;
-                box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
-            }
-            .suggestion-header {
+                border-left: 5px solid {sc_border};
+                box-shadow: {sc_shadow};
+            }}
+            .suggestion-header {{
                 display: flex;
                 align-items: center;
                 margin-bottom: 10px;
-            }
-            .suggestion-icon {
+            }}
+            .suggestion-icon {{
                 font-size: 24px;
                 margin-right: 12px;
-            }
-            .suggestion-title {
+            }}
+            .suggestion-title {{
                 font-size: 18px;
                 font-weight: 600;
                 color: var(--text-color);
-            }
-            .suggestion-content {
+            }}
+            .suggestion-content {{
                 color: var(--text-color);
                 font-size: 15px;
                 line-height: 1.6;
                 margin-left: 36px;
                 opacity: 0.9;
-            }
+            }}
             </style>
             """, unsafe_allow_html=True)
 

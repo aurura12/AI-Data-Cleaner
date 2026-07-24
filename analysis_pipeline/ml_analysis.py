@@ -105,15 +105,6 @@ def run_ml_analysis(input_path=None, output_path=None, schema=None):
         
     print(f"[读取] 正在加载数据...")
     df = pd.read_csv(file_to_read)
-    
-    if 'Is_Pass' not in df.columns and 'Label_Pass' in df.columns:
-        df['Is_Pass'] = df['Label_Pass']
-
-    # 如果没有 Is_Pass，尝试用 schema 查找
-    if 'Is_Pass' not in df.columns and schema:
-        pass_col = schema.find_column('pass', '良率', 'label')
-        if pass_col and pass_col in df.columns:
-            df['Is_Pass'] = df[pass_col]
 
     analysis_results = []
     
@@ -122,25 +113,75 @@ def run_ml_analysis(input_path=None, output_path=None, schema=None):
     # =====================================================
     
     # --- A. 标签定义 (Target Definition) ---
-    # 逻辑：我们将预测 "是否为缺陷品"。
-    # Is_Pass: 1(良品), 0(不良) -> 转换目标 y : 1(Defect), 0(Good)
-    # 这样 SHAP 值越正，代表该特征越推动芯片变为"次品(Defect)"。
-    
-    if 'Is_Pass' in df.columns:
-        # 反转良率，预测不良风险
+    # 逻辑：我们预测样本是否为"不良/异常"。
+    # 当有 schema 时，使用 schema 定义的目标列和值映射。
+    # SHAP 值越正，代表该特征越推动样本变为"不良"。
+
+    target_col = None
+    target_col_is_pass = False  # 目标列是否为"1=Pass, 0=Fail"的良率模式
+
+    if schema and schema.target_column and schema.target_column in df.columns:
+        target_col = schema.target_column
+        # 检查是否有明确的 pass/fail 值映射
+        if schema.pass_values and schema.fail_values:
+            # 构建映射: pass_values → 0 (good), fail_values → 1 (bad)
+            s_str = df[target_col].astype(str)
+            pass_set = {str(v) for v in schema.pass_values}
+            fail_set = {str(v) for v in schema.fail_values}
+            # 先标记 pass 为 0 (非缺陷), fail 为 1 (缺陷)
+            y = pd.Series(1, index=df.index)  # 默认视为缺陷
+            y[s_str.isin(pass_set)] = 0       # pass 值标记为 0
+            y[s_str.isin(fail_set)] = 1       # fail 值标记为 1
+            # 不在映射表中的行设为 NaN 并丢弃
+            mapped_mask = s_str.isin(pass_set) | s_str.isin(fail_set)
+            y = y[mapped_mask]
+            df = df.loc[mapped_mask].copy()
+        else:
+            # 没有 pass/fail 映射，检查是否是 0/1 格式
+            uniq = sorted(df[target_col].dropna().unique())
+            if set(uniq) <= {0, 1} or set(str(v) for v in uniq) <= {'0', '1'}:
+                y = df[target_col].astype(int)
+                target_col_is_pass = True
+            elif set(uniq) <= {-1, 0, 1}:
+                y = (df[target_col] <= 0).astype(int)
+            else:
+                print(f"警告：目标列 {target_col} 取值 {uniq}，尝试将最小值对应为良品")
+                # 将取值最少的视为"不良"
+                vc = df[target_col].value_counts()
+                minority = vc.idxmin()
+                y = (df[target_col] == minority).astype(int) if minority else pd.Series(0, index=df.index)
+    elif 'Is_Pass' in df.columns:
+        target_col = 'Is_Pass'
+        target_col_is_pass = True
         y = (1 - df['Is_Pass']).astype(int)
+    elif 'Label_Pass' in df.columns:
+        target_col = 'Label_Pass'
+        target_col_is_pass = True
+        y = (1 - df['Label_Pass']).astype(int)
+    elif schema and schema.target_column and schema.target_column in df.columns:
+        target_col = schema.target_column
+        # 尝试二元化
+        vc = df[target_col].value_counts()
+        if len(vc) >= 2:
+            minority = vc.idxmin()
+            y = (df[target_col].astype(str) == str(minority)).astype(int)
+        else:
+            print("错误：目标列取值单一，无法进行分类分析")
+            return []
     else:
-        print("错误：未找到 Is_Pass 列")
+        print("错误：未找到目标列（尝试 Is_Pass/Label_Pass 或 schema 定义的目标列）")
         return []
 
     defect_rate = y.mean()
-    print(f"[统计] 样本总数: {len(df)} | 缺陷样本(1): {y.sum()} | 缺陷率: {defect_rate:.2%}")
+    fail_label = schema.fail_label if (schema and schema.fail_label) else "不良"
+    pass_label = schema.pass_label if (schema and schema.pass_label) else "良品"
+    print(f"[统计] 样本总数: {len(y)} | {fail_label}样本(1): {y.sum()} | {fail_label}率: {defect_rate:.2%}")
     
     # --- B. 准备特征矩阵 (X) ---
     
     if schema and schema.get_numeric_features():
         # 用 schema 自动选择特征（排除目标列）
-        target_name = schema.get_target_column_name()
+        target_name = schema.get_target_column()
         feature_candidates = [
             f for f in schema.get_numeric_features()
             if f != target_name
@@ -185,25 +226,20 @@ def run_ml_analysis(input_path=None, output_path=None, schema=None):
         if col_height_present and col_pressure_present:
             X['Interaction_Press_Height'] = X[col_height_present] * X[col_pressure_present]
     
-    # --- D. 中文重命名 (用于绘图展示) ---
+    # --- D. 显示名映射 (用于绘图展示，优先使用 schema display_name) ---
     name_mapping = {}
     if schema:
-        # 用 schema 的 display_name
         for col_s in schema.columns:
             if col_s.raw_name in X.columns:
-                name_mapping[col_s.raw_name] = col_s.display_name or col_s.raw_name
-    # 添加硬编码映射作为补充
-    name_mapping.update({
-        'Total_Indium_Height': '总铟柱高度(μm)', 
-        'Calc_Circuit_Range': '电路平整度(Range)', 
-        'Indium_Taper_Zscore': '铟柱形状异常度(Z)',
-        'Force_kg': '倒焊压力(kg)', 
-        'Equipment_Temp': '设备温度(Temp)', 
-        'Vacuum_Level': '真空度(Vac)',
-        'Time_Seq_Day': '生产天数(设备漂移)', 
-        'Position_Code_Enc': '位置编码', 
-        'Interaction_Press_Height': '压力x高度(交互项)'
-    })
+                name_mapping[col_s.raw_name] = col_s.display_name or col_s.semantic_name or col_s.raw_name
+    # 无 schema 时，对特殊加工列做合理命名
+    if not schema:
+        name_mapping.update({
+            'Position_Code_Enc': '位置编码',
+        })
+
+    # 按 valid_features 顺序构建中文特征名列表（供后续 importance_df 使用）
+    feature_names_cn = [name_mapping.get(f, f) for f in valid_features]
 
     # --- E. 缺失值填充 (针对 RandomForeest) ---
     # XGBoost 可以自动处理 NaN，但 RF 不行
@@ -243,7 +279,7 @@ def run_ml_analysis(input_path=None, output_path=None, schema=None):
     sv_target = shap_values
     
     shap.summary_plot(sv_target, X, show=False)
-    plt.title("关键工艺参数对【缺陷风险】的影响程度\n(SHAP值>0 代表增加缺陷风险)", fontsize=14)
+    plt.title(f"关键特征对【{fail_label}风险】的影响程度\n(SHAP值>0 代表增加{fail_label}风险)", fontsize=14)
     plt.tight_layout()
     img_path_1 = os.path.join(dir_to_save, '1_SHAP_归因分析.png')
     plt.savefig(img_path_1, dpi=300)
@@ -269,35 +305,34 @@ def run_ml_analysis(input_path=None, output_path=None, schema=None):
     })
     
     # 图2: 依赖图 - 选择最重要的特征进行非线性分析
-    # 优先用第一个有效特征，否则回退到硬编码
     first_feat = X.columns[0] if len(X.columns) > 0 else None
-    target_feat_cn = first_feat or name_mapping.get('Total_Indium_Height', '总铟柱高度(μm)')
-    if target_feat_cn in X.columns:
+    target_feat_cn = name_mapping.get(first_feat, first_feat) if first_feat else None
+    if first_feat:
         plt.figure(figsize=(8, 6))
         shap.dependence_plot(
-            target_feat_cn, 
+            first_feat, 
             sv_target, 
             X, 
             display_features=X,
             show=False,
-            interaction_index=None # 不强制显示交互，让图更干净
+            interaction_index=None
         )
-        plt.ylabel("SHAP值 (缺陷贡献度)")
-        plt.title(f"{target_feat_cn} 对良率的影响趋势", fontsize=14)
+        plt.ylabel("SHAP值 (对结果贡献度)")
+        plt.title(f"{target_feat_cn} 对目标的影响趋势", fontsize=14)
         plt.axhline(0, color='grey', linestyle='--', alpha=0.5)
         plt.tight_layout()
-        img_path_2 = os.path.join(dir_to_save, '2_高度参数依赖分析.png')
+        img_path_2 = os.path.join(dir_to_save, '2_主要特征依赖分析.png')
         plt.savefig(img_path_2, dpi=300)
         plt.close()
 
-        dep_desc = f"参数依赖分析摘要（针对 {target_feat_cn}）：\n"
-        feat_vals = X[target_feat_cn].values
-        feat_idx = list(X.columns).index(target_feat_cn)
+        dep_desc = f"特征依赖分析摘要（针对 {target_feat_cn}）：\n"
+        feat_vals = X[first_feat].values
+        feat_idx = list(X.columns).index(first_feat)
         feat_shaps = sv_target[:, feat_idx] if len(sv_target.shape) > 1 else sv_target
         high_risk_mask = feat_shaps > 0
         if np.any(high_risk_mask):
             risk_vals = feat_vals[high_risk_mask]
-            dep_desc += f"当 {target_feat_cn} 处于区间 [{risk_vals.min():.2f}, {risk_vals.max():.2f}] 时，缺陷风险增加。\n"
+            dep_desc += f"当 {target_feat_cn} 处于区间 [{risk_vals.min():.2f}, {risk_vals.max():.2f}] 时，{fail_label}风险增加。\n"
         else:
             dep_desc += "该特征在当前观测范围内未显示出明显的风险增加趋势。\n"
         corr = np.corrcoef(feat_vals, feat_shaps)[0, 1]
@@ -343,7 +378,7 @@ def run_ml_analysis(input_path=None, output_path=None, schema=None):
     importance_df['Total_Score'] = norm_df.mean(axis=1)
     importance_df = importance_df.sort_values('Total_Score', ascending=False)
     
-    print("\n=== Top 5 关键工艺参数 ===")
+    print(f"\n=== Top 5 关键特征 ===")
     print(importance_df[['Feature', 'Total_Score']].head(5))
     importance_df.to_csv(os.path.join(dir_to_save, 'feature_importance_ranking.csv'), index=False)
 
@@ -355,7 +390,7 @@ def run_ml_analysis(input_path=None, output_path=None, schema=None):
     
     plot_df.plot(kind='barh', figsize=(12, 6), width=0.8, colormap='viridis')
     plt.gca().invert_yaxis() # 排名高的在上面
-    plt.title("工艺参数重要性综合排名 (Top 8 Factors)", fontsize=16)
+    plt.title("特征重要性综合排名 (Top 8 Factors)", fontsize=16)
     plt.xlabel("归一化重要性 (0~1)")
     plt.legend(loc='lower right')
     plt.tight_layout()
@@ -390,7 +425,7 @@ def run_ml_analysis(input_path=None, output_path=None, schema=None):
         feature_names=top_2_features, 
         filled=True, 
         rounded=True,
-        class_names=['良品区域(Pass)', '缺陷风险(Fail)'], 
+        class_names=[f'{pass_label}(合格)', f'{fail_label}(风险)'], 
         proportion=True, # 显示比例而不是数量
         fontsize=12
     )
@@ -414,6 +449,7 @@ def run_ml_analysis(input_path=None, output_path=None, schema=None):
 if __name__ == "__main__":
     try:
         from domain_adapter import load_or_build_schema
+        # 从 pipeline 共享的 schema.json 加载，不传 client 表示仅从文件读取
         _schema = load_or_build_schema()
     except Exception:
         _schema = None

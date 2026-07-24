@@ -105,7 +105,13 @@ def layer1_generic_clean(df: pd.DataFrame, schema: DataSchema,
         elif col_schema.dtype == 'datetime':
             try:
                 before_nan = int(df[col_name].isna().sum())
-                df[col_name] = pd.to_datetime(df[col_name], errors='coerce')
+                # 对于混合格式日期（YYYY/MM/DD, YYYY-MM-DD, YYYY.MM.DD），
+                # pandas 2.0+ 需要显式指定 format='mixed' 才能正确解析
+                try:
+                    df[col_name] = pd.to_datetime(df[col_name], errors='coerce', format='mixed')
+                except TypeError:
+                    # 旧版 pandas 不支持 format='mixed' 参数
+                    df[col_name] = pd.to_datetime(df[col_name], errors='coerce')
                 after_nan = int(df[col_name].isna().sum())
                 type_stats['converted'].append({
                     'column': col_name,
@@ -212,8 +218,9 @@ def _auto_detect_target_column(df: pd.DataFrame) -> Optional[str]:
     当Schema未识别到目标列时，用启发式规则自动检测。
     检测关键词：压连、结果、状态、良率、class、label、target等
     """
-    target_keywords = ['压连', '结果', '状态', '良率', '等级', 'class', 'label', 'target',
-                       'Pass', 'Fail', 'defect', 'quality', 'grade', 'outcome']
+    _common_target_keywords = ['结果', '状态', '良率', '等级', 'class', 'label', 'target',
+                               'Pass', 'Fail', 'defect', 'quality', 'grade', 'outcome']
+    target_keywords = _common_target_keywords
     for col in df.columns:
         col_str = str(col)
         if any(k in col_str for k in target_keywords):
@@ -289,16 +296,21 @@ def format_cleaning_stats(stats: Dict[str, Any]) -> str:
     l2_status = l2.get('status', 'disabled')
     if l2_status == 'completed':
         lines.append("")
-        lines.append(f"🤖 LLM增强清洗完成")
-        detected = l2.get('detected_columns', [])
+        lines.append(f"🤖 LLM增强清洗完成（基于业务理解生成的定制清洗代码）")
+        detected = l2.get('detected_issues', [])
         if detected:
-            lines.append(f"📌 处理了 {len(detected)} 个复杂列: {', '.join(detected)}")
+            lines.append(f"📌 检测到 {len(detected)} 个质量问题:")
+            for d in detected[:8]:
+                col = d.get('column', '') or '全局'
+                lines.append(f"    - [{d.get('severity', 'medium')}] {col}: {d.get('reason', '')}")
+        if l2.get('code'):
+            lines.append("📌 已生成定制清洗代码（可展开查看）")
         new_cols = l2.get('new_columns', [])
         if new_cols:
             lines.append(f"📌 新增 {len(new_cols)} 个衍生列")
-    elif l2_status == 'no_complex_columns':
+    elif l2_status == 'no_complex_columns' or l2_status == 'no_issues_detected':
         lines.append("")
-        lines.append("ℹ️ LLM增强清洗: 未检测到需要处理的复杂列")
+        lines.append("ℹ️ LLM增强清洗: 未检测到需要处理的质量问题")
     elif l2_status == 'error':
         lines.append("")
         lines.append(f"⚠️ LLM增强清洗出错: {l2.get('error', '未知错误')}")
@@ -312,21 +324,34 @@ def detect_complex_columns(df: pd.DataFrame, schema: DataSchema) -> List[Dict[st
     """
     检测哪些列需要LLM增强清洗。
     
-    返回列表，每个元素包含:
-      - 'column': 列名
-      - 'reason': 检测原因描述
-      - 'samples': 前5个样本值
-    """
-    complex_cols = []
+    优先使用 Schema 中 LLM 已经识别出的 quality_issues；
+    同时用规则补充检测三类复杂文本列作为兜底。
 
+    返回列表，每个元素包含:
+      - 'column': 列名（全局问题可填空字符串）
+      - 'reason': 检测原因描述
+      - 'severity': 'high'|'medium'|'low'
+      - 'samples': 前3个样本值（可选）
+    """
+    all_issues = []
+
+    # 优先使用 Schema 中 LLM 识别出的质量问题
+    if schema.quality_issues:
+        for issue in schema.quality_issues:
+            all_issues.append({
+                'column': issue.get('column', '') or '',
+                'reason': issue.get('issue', ''),
+                'severity': issue.get('severity', 'medium'),
+                'samples': [],
+            })
+
+    # 规则兜底：检测三类复杂文本列
     for col_schema in schema.columns:
         if col_schema.role == 'ignore':
             continue
         col_name = col_schema.raw_name
         if col_name not in df.columns:
             continue
-
-        # 只处理文本/ID类列
         if col_schema.dtype not in ('text', 'categorical'):
             continue
 
@@ -334,74 +359,159 @@ def detect_complex_columns(df: pd.DataFrame, schema: DataSchema) -> List[Dict[st
         if not sample_vals:
             continue
 
-        # 检查1: 中文+数字混合（如"真空度：-866 T:19.8℃"）
+        # 检查1: 中文+数字混合
         cn_num_pattern = sum(
             1 for v in sample_vals
             if re.search(r'[\u4e00-\u9fff]', v) and re.search(r'-?\d+\.?\d*', v)
         )
         if cn_num_pattern >= len(sample_vals) * 0.3:
-            complex_cols.append({
-                'column': col_name,
-                'reason': '文本包含中文与数值混合，可能内嵌结构化数据',
-                'samples': sample_vals[:5]
-            })
+            # 避免重复添加（如果 schema 已经列出了）
+            if not any(i['column'] == col_name for i in all_issues):
+                all_issues.append({
+                    'column': col_name,
+                    'reason': '文本包含中文与数值混合，可能内嵌结构化数据',
+                    'severity': 'medium',
+                    'samples': sample_vals[:3]
+                })
             continue
 
-        # 检查2: 复合ID格式（字母+数字+分隔符）
+        # 检查2: 复合ID格式
         id_pattern = sum(
             1 for v in sample_vals
             if re.search(r'[A-Za-z]+\d+[-_#]\d+', v)
         )
         if id_pattern >= len(sample_vals) * 0.5:
-            complex_cols.append({
-                'column': col_name,
-                'reason': '复合ID格式，可能包含可解析的子字段',
-                'samples': sample_vals[:5]
-            })
+            if not any(i['column'] == col_name for i in all_issues):
+                all_issues.append({
+                    'column': col_name,
+                    'reason': '复合ID格式，可能包含可解析的子字段',
+                    'severity': 'medium',
+                    'samples': sample_vals[:3]
+                })
             continue
 
-        # 检查3: 数值+单位混合（如"12.5μm"）
+        # 检查3: 数值+单位混合
         num_unit_pattern = sum(
             1 for v in sample_vals
             if re.search(r'\d+\.?\d*[a-zA-Zμ°%]+', v)
         )
         if num_unit_pattern >= len(sample_vals) * 0.3:
-            complex_cols.append({
-                'column': col_name,
-                'reason': '数值包含单位标记，需剥离',
-                'samples': sample_vals[:5]
-            })
+            if not any(i['column'] == col_name for i in all_issues):
+                all_issues.append({
+                    'column': col_name,
+                    'reason': '数值包含单位标记，需剥离',
+                    'severity': 'medium',
+                    'samples': sample_vals[:3]
+                })
             continue
 
-    return complex_cols
+    return all_issues
 
 
 # ── LLM Prompt 模板 ─────────────────────────────────────────────
 
-_LLM_CLEANING_PROMPT = """你是数据清洗专家。分析以下数据集中需要清洗的列，生成Python清洗代码。
+_LLM_CLEANING_PROMPT = """你是数据清洗专家。基于以下**业务理解**生成定制化的数据清洗代码。
 
-【待处理的列】
-{column_info}
+【业务领域】
+{business_domain}
+
+【业务背景】
+{business_description}
+
+【已识别的数据质量问题】
+{quality_issues_text}
+
+【清洗建议】
+{cleaning_recommendations_text}
+
+【列定义】
+{column_definitions}
 
 【DataFrame列名】
 {all_columns}
 
-【要求】
-请生成一个名为 `enhanced_clean(df) -> pd.DataFrame` 的Python函数：
-1. 对每一列做合理的清洗处理（类型转换、值提取、格式统一等）
-2. 如果有内嵌数据（如文本中的数值），提取为新列
-3. 如果有复合ID格式，解析为多个有意义的新列
-4. 删除原始列中已无用或提取过的部分
-5. **只输出纯Python代码，不要markdown包裹和额外说明**
-6. 代码中只使用 pandas、numpy、re
+【要求：必须严格实现以下全部6个清洗步骤，不能省略任何一个】
 
-示例输出格式（直接是代码，不含markdown）：
+请生成一个名为 `enhanced_clean(df) -> pd.DataFrame` 的Python函数：
+
+**步骤1：日期格式统一**
+- 对 role=datetime 的列，用 pd.to_datetime(df[col], errors='coerce', format='mixed') 统一格式
+- 如 2024/01/15、2024-01-16、2024.01.17 等混合格式都要正确解析
+
+**步骤2：缺失值处理**
+- 根据每列的 missing_strategy 处理：
+  - median_fill → df[col].fillna(df[col].median())
+  - mean_fill → df[col].fillna(df[col].mean())
+  - mode_fill → df[col].fillna(df[col].mode()[0])
+  - drop → 删除该列有缺失的行
+  - keep → 保留缺失值不动
+
+**步骤3：异常值检测与处理**
+- 对 outlier_check=true 的数值列，用 IQR 方法检测异常值：
+  Q1, Q3 = df[col].quantile([0.25, 0.75])
+  IQR = Q3 - Q1
+  lower, upper = Q1 - 1.5*IQR, Q3 + 1.5*IQR
+- 将异常值替换为 NaN，然后用该列的中位数填充
+- 同时创建标记列 {col}_outlier（0=正常, 1=异常）
+
+**步骤4：检测并删除业务重复行**
+- 如果有 id_column，排除 ID 列后检查其余列是否完全重复
+- 对重复组保留第一次出现的行，删除其余
+
+**步骤5：目标列映射**
+- 如果有 target_column 且设置了 pass_values/fail_values：
+  - pass_values 中的值映射为 1
+  - fail_values 中的值映射为 0
+  - 不在映射表中的值置为 NaN 并删除该行
+
+**步骤6：文本标准化**
+- 对所有 object/string 类型的列：df[col] = df[col].astype(str).str.strip()
+
+**重要约束：**
+1. 所有操作都用 `df[col] = new_value` 方式赋值，不要用 inplace=True
+2. 不要使用已废弃的参数如 `infer_datetime_format`
+3. 必须处理列不存在或全部缺失的边界情况
+4. **只输出纯Python代码，不要markdown包裹和额外说明**
+5. 代码中只使用 pandas、numpy、re
+
+参考实现框架（请按此模式编写完整函数）：
 def enhanced_clean(df):
     import pandas as pd, numpy as np, re
     df = df.copy()
-    # 自定义清洗逻辑...
+    # 步骤1: 日期格式统一
+    # ...
+    # 步骤2: 缺失值处理
+    # ...
+    # 步骤3: 异常值检测与处理
+    # ...
+    # 步骤4: 重复行删除
+    # ...
+    # 步骤5: 目标列映射
+    # ...
+    # 步骤6: 文本标准化
+    # ...
     return df
 """
+
+
+def _build_column_definitions_text(schema: DataSchema) -> str:
+    """将列定义格式化为文本"""
+    lines = []
+    for col in schema.columns:
+        parts = [f"  - {col.raw_name}"]
+        if col.display_name:
+            parts.append(f"（{col.display_name}）")
+        parts.append(f"role={col.role}, dtype={col.dtype}")
+        if col.physical_unit:
+            parts.append(f"unit={col.physical_unit}")
+        if col.reasonable_range:
+            parts.append(f"合理范围=[{col.reasonable_range.get('min', '?')}, {col.reasonable_range.get('max', '?')}]")
+        if col.missing_strategy:
+            parts.append(f"缺失策略={col.missing_strategy}")
+        if col.outlier_check:
+            parts.append("需异常检测")
+        lines.append(" ".join(parts))
+    return "\n".join(lines)
 
 
 def generate_cleaning_code(df: pd.DataFrame, schema: DataSchema,
@@ -409,10 +519,11 @@ def generate_cleaning_code(df: pd.DataFrame, schema: DataSchema,
                            client, model: str, coder_model: str = None) -> str:
     """
     调用Code模型生成增强清洗代码。
+    传入完整的 Schema 业务理解信息，让 Code 模型生成针对性清洗代码。
 
     参数:
         df: 原始DataFrame
-        schema: DataSchema
+        schema: DataSchema（含LLM业务理解）
         complex_columns: detect_complex_columns的返回值
         client: OpenAI客户端
         model: 文本模型
@@ -421,22 +532,38 @@ def generate_cleaning_code(df: pd.DataFrame, schema: DataSchema,
     返回:
         生成的Python代码字符串
     """
-    # 构建列信息
-    col_info_lines = []
-    for cc in complex_columns:
-        col_name = cc['column']
-        samples = cc['samples']
-        reason = cc['reason']
-        col_info_lines.append(
-            f"列名: {col_name}\n"
-            f"  问题: {reason}\n"
-            f"  样本: {samples}\n"
-        )
-
     all_columns = list(df.columns)
 
+    # 格式化质量问题和清洗建议
+    if complex_columns:
+        quality_lines = []
+        for cc in complex_columns:
+            col = cc.get('column', '') or '全局'
+            quality_lines.append(f"  - [{cc.get('severity', 'medium')}] {col}: {cc.get('reason', '')}")
+        quality_text = "\n".join(quality_lines)
+    elif schema.quality_issues:
+        quality_text = "\n".join(
+            f"  - [{q.get('severity', 'medium')}] {q.get('column', '全局') or '全局'}: {q.get('issue', '')}"
+            for q in schema.quality_issues
+        )
+    else:
+        quality_text = "  （未检测到明确的质量问题）"
+
+    # 清洗建议
+    if schema.cleaning_recommendations:
+        rec_text = "\n".join(f"  - {r}" for r in schema.cleaning_recommendations)
+    else:
+        rec_text = "  （无特定的清洗建议）"
+
+    # 列定义
+    col_defs = _build_column_definitions_text(schema)
+
     prompt = _LLM_CLEANING_PROMPT.format(
-        column_info="\n".join(col_info_lines),
+        business_domain=schema.business_domain or '未知',
+        business_description=schema.business_description or '未提供',
+        quality_issues_text=quality_text,
+        cleaning_recommendations_text=rec_text,
+        column_definitions=col_defs,
         all_columns=str(all_columns)
     )
 
@@ -582,17 +709,24 @@ def run_cleaning_pipeline(df: pd.DataFrame, schema: DataSchema,
 
     # Layer 2: LLM增强清洗
     if enable_llm_enhanced and client:
-        # 检测复杂列
-        complex_cols = detect_complex_columns(cleaned_df, schema)
-        if complex_cols:
+        # 过滤 schema：只保留 Layer 1 后仍然存在的列
+        schema_l2 = _filter_schema_for_layer2(schema, cleaned_df)
+
+        # 检测需要处理的问题（combine schema LLM分析结果 + 规则兜底）
+        all_issues = detect_complex_columns(cleaned_df, schema_l2)
+        
+        # 只要检测到任何问题就触发LLM增强清洗
+        if all_issues:
             try:
                 full_stats['layer2'] = {
                     'status': 'generating',
-                    'detected_columns': [c['column'] for c in complex_cols]
+                    'detected_issues': [{'column': i['column'], 'reason': i['reason'], 
+                                         'severity': i.get('severity', 'medium')} 
+                                        for i in all_issues]
                 }
 
                 code_str = generate_cleaning_code(
-                    cleaned_df, schema, complex_cols,
+                    cleaned_df, schema_l2, all_issues,
                     client, model, coder_model=coder_model
                 )
 
@@ -616,8 +750,35 @@ def run_cleaning_pipeline(df: pd.DataFrame, schema: DataSchema,
             except Exception as e:
                 full_stats['layer2'] = {'status': 'error', 'error': str(e)}
         else:
-            full_stats['layer2'] = {'status': 'no_complex_columns'}
+            full_stats['layer2'] = {'status': 'no_issues_detected'}
     else:
         full_stats['layer2'] = {'status': 'disabled'}
 
     return cleaned_df, full_stats
+
+
+def _filter_schema_for_layer2(schema: DataSchema, df: pd.DataFrame) -> DataSchema:
+    """过滤 schema，只保留 DataFrame 中仍然存在的列（Layer 1 可能丢弃了 ignore 列）"""
+    existing_cols = set(df.columns)
+    filtered_columns = [c for c in schema.columns if c.raw_name in existing_cols]
+    
+    # 创建新 schema，只包含现有列
+    from dataclasses import replace
+    new_schema = DataSchema(
+        id_column=schema.id_column if schema.id_column in existing_cols else None,
+        target_column=schema.target_column if schema.target_column in existing_cols else None,
+        target_mapping=schema.target_mapping,
+        pass_values=schema.pass_values,
+        fail_values=schema.fail_values,
+        pass_label=schema.pass_label,
+        fail_label=schema.fail_label,
+        columns=filtered_columns,
+        target_type=schema.target_type,
+        raw_data_shape=schema.raw_data_shape,
+        business_domain=schema.business_domain,
+        business_description=schema.business_description,
+        quality_issues=[q for q in schema.quality_issues 
+                       if not q.get('column') or q['column'] in existing_cols],
+        cleaning_recommendations=schema.cleaning_recommendations,
+    )
+    return new_schema
