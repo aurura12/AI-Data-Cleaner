@@ -36,7 +36,7 @@ def render_ai_report(t, df_active=None):
     
     st.subheader(t.get('ai_report_title', '📊 描述性报告'))
     current_filter = st.session_state.get('analysis_chip_filter_applied', utils.CHIP_FILTER_ALL)
-    filter_desc = "全部芯片" if current_filter == utils.CHIP_FILTER_ALL else f"仅 {current_filter}"
+    filter_desc = "全部数据" if current_filter == utils.CHIP_FILTER_ALL else f"仅 {current_filter}"
     st.caption(f"当前描述性报告分析范围：{filter_desc}")
     
     # 文件路径
@@ -473,17 +473,26 @@ def render_ai_report(t, df_active=None):
                     os.path.join(ML_REPORT_DIR, img_basename),
                 ]
                 
-                # 特殊处理：Position Analysis 映射修正
-                if 'Position_Yield' in img_basename:
-                    candidates.append(os.path.join(POSITION_REPORT_DIR, '1_Position_Yield_Rate.png'))
-                
-                if 'Position_Parameter' in img_basename:
-                    candidates.append(os.path.join(POSITION_REPORT_DIR, '2_Position_Failure_Detail.png'))
-                
-                if any(k in img_basename for k in ['Physical_Deviation', 'Height_Distribution', 'Physical_Stats', 'Physical_Diff', 'Physical_Characteristics', 'Process_Parameter', 'Feature_Distribution', 'High_Risk', 'Physical_Consistency', 'Parameter_Drift']):
-                    candidates.append(os.path.join(POSITION_REPORT_DIR, '3_Position_Physical_Features.png'))
-                if 'Failure_Detail' in img_basename:
-                    candidates.append(os.path.join(POSITION_REPORT_DIR, '2_Position_Pass_Fail_Ratio.png'))
+                # 通用图片路径匹配：按数字前缀或文件名匹配
+                import glob as _glob
+                # 尝试扫描目录中的所有 PNG
+                for _dir in [POSITION_REPORT_DIR, EDA_REPORT_DIR, ML_REPORT_DIR]:
+                    if os.path.isdir(_dir):
+                        for _fn in os.listdir(_dir):
+                            if _fn.endswith('.png'):
+                                _key = os.path.splitext(_fn)[0]
+                                if _key.lower() in img_basename.lower() or img_basename.lower() in _key.lower():
+                                    candidates.append(os.path.join(_dir, _fn))
+                # 回退：按数字前缀模糊匹配
+                if len(candidates) <= 1:
+                    for _dir in [POSITION_REPORT_DIR, EDA_REPORT_DIR, ML_REPORT_DIR]:
+                        if os.path.isdir(_dir):
+                            for _fn in sorted(os.listdir(_dir)):
+                                if _fn.endswith('.png'):
+                                    prefix = _fn.split('_')[0] if '_' in _fn else ''
+                                    if prefix and prefix.rstrip('0123456789').isdigit():
+                                        continue
+                                    candidates.append(os.path.join(_dir, _fn))
                 
                 for c in candidates:
                     if os.path.exists(c):
@@ -533,7 +542,7 @@ def render_ai_report(t, df_active=None):
                     # 完全没有h2标签，说明报告格式完全错误
                     # 尝试从后往前查找有效内容（通常有效内容在最后）
                     # 查找常见的报告内容标识
-                    content_markers = ['<p>', '<h3>', '<strong>', '良率', '工艺', '归因', '总结']
+                    content_markers = ['<p>', '<h3>', '<strong>', '分析', '总结', '建议', '结论']
                     valid_start = -1
                     for marker in content_markers:
                         pos = content.find(marker)
@@ -707,77 +716,56 @@ def render_ai_report(t, df_active=None):
     # 注意：自动刷新逻辑已在任务完成检测处直接调用 st.rerun()，这里不再需要
     # 加载KPI数据用于显示核心指标概览
     def load_kpi_data():
-        """优先从最新数据文件计算KPI，失败时再回退到analysis_summary.json"""
+        """基于 DataSchema 通用计算 KPI，适配任意行业数据"""
+        try:
+            from analysis_pipeline.domain_adapter import compute_kpi
+        except ImportError:
+            pass
+
         data_file = CLEANED_DATA_FILE
         if os.path.exists(data_file):
             try:
                 import pandas as pd
                 df = pd.read_csv(data_file)
-                total = len(df)
-                pass_count = 0
-                fail_count = 0
-                status_counts = {}
-
-                if 'Label_Pass' in df.columns:
-                    pass_count = int((df['Label_Pass'] == 1).sum())
-                    fail_count = int((df['Label_Pass'] == 0).sum())
-                elif 'Is_Pass' in df.columns:
-                    pass_count = int((df['Is_Pass'] == 1).sum())
-                    fail_count = int((df['Is_Pass'] == 0).sum())
-
-                target_col = next((c for c in df.columns if '压连' in c), None)
-                if target_col:
-                    for val in df[target_col].dropna():
-                        try:
-                            v = int(float(val))
-                            status_counts[v] = status_counts.get(v, 0) + 1
-                        except:
-                            pass
-
-                if pass_count == 0 and fail_count == 0 and status_counts:
-                    pass_count = status_counts.get(0, 0) + status_counts.get(1, 0)
-                    fail_count = status_counts.get(-1, 0) + status_counts.get(2, 0)
-
-                open_count = status_counts.get(-1, 0)
-                severe_count = status_counts.get(2, 0)
-
-                return {
-                    'total': total,
-                    'pass_rate': (pass_count / total * 100) if total > 0 else 0,
-                    'pass_count': pass_count,
-                    'fail_count': fail_count,
-                    'open_count': open_count,
-                    'severe_count': severe_count,
-                    'open_rate': (open_count / total * 100) if total > 0 else 0,
-                    'severe_rate': (severe_count / total * 100) if total > 0 else 0
-                }
+                schema = st.session_state.get('data_schema')
+                if schema:
+                    kpi = compute_kpi(df, schema)
+                    return {
+                        'total': kpi.get('total', len(df)),
+                        'pass_rate': kpi.get('pass_rate', 0),
+                        'pass_count': kpi.get('pass_count', 0),
+                        'fail_count': kpi.get('fail_count', 0),
+                        'value_distribution': kpi.get('value_distribution', {}),
+                        'target_mapping': schema.target_mapping or {},
+                        'pass_label': schema.pass_label or '合格',
+                        'fail_label': schema.fail_label or '不合格',
+                        'target_column': kpi.get('target_column', ''),
+                    }
+                else:
+                    return {'total': len(df), 'pass_rate': 0, 'pass_count': 0, 'fail_count': 0,
+                            'value_distribution': {}, 'target_mapping': {},
+                            'pass_label': '合格', 'fail_label': '不合格', 'target_column': ''}
             except Exception as e:
-                print(f"⚠️ 从数据文件计算KPI失败: {e}")
-        
-        # 回退：从analysis_summary.json读取
+                print(f"KPI计算失败: {e}")
+
         summary_file = ANALYSIS_SUMMARY_FILE
         if os.path.exists(summary_file):
             try:
                 with open(summary_file, 'r', encoding='utf-8') as f:
                     summary = json.load(f)
                     if 'eda_analysis' in summary and 'yield_stats' in summary['eda_analysis']:
-                        yield_stats = summary['eda_analysis']['yield_stats']
-                        total = yield_stats.get('total', 0)
-                        open_count = yield_stats.get('open_count', 0)
-                        severe_count = yield_stats.get('severe_count', 0)
+                        ys = summary['eda_analysis']['yield_stats']
                         return {
-                            'total': total,
-                            'pass_rate': yield_stats.get('pass_rate', 0) * 100,
-                            'pass_count': yield_stats.get('pass_count', 0),
-                            'fail_count': yield_stats.get('fail_count', 0),
-                            'open_count': open_count,
-                            'severe_count': severe_count,
-                            'open_rate': (open_count / total * 100) if total > 0 else 0,
-                            'severe_rate': (severe_count / total * 100) if total > 0 else 0
+                            'total': ys.get('total', 0),
+                            'pass_rate': ys.get('pass_rate', 0) * 100,
+                            'pass_count': ys.get('pass_count', 0),
+                            'fail_count': ys.get('fail_count', 0),
+                            'value_distribution': {},
+                            'target_mapping': {},
+                            'pass_label': '合格', 'fail_label': '不合格', 'target_column': '',
                         }
             except Exception as e:
-                print(f"⚠️ 加载KPI数据失败: {e}")
-        
+                print(f"KPI加载失败: {e}")
         return None
     
     # 显示核心指标概览（如果有数据）
@@ -785,16 +773,52 @@ def render_ai_report(t, df_active=None):
     if kpi_data:
         theme = st.session_state.get('theme', 'light')
         if theme == 'dark':
-            bg_color, text_color, card_bg = "#1e1e1e", "#ecf0f1", "#2d2d2d"
+            card_bg = "#2d2d2d"
+            text_color = "#ecf0f1"
             primary = "#5dade2"
             danger_color = "#ff6b6b"
             warning_color = "#ffb347"
         else:
-            bg_color, text_color, card_bg = "#f5f7fa", "#2c3e50", "#ffffff"
+            card_bg = "#ffffff"
+            text_color = "#2c3e50"
             primary = "#3498db"
             danger_color = "#e74c3c"
             warning_color = "#f39c12"
-        
+
+        # 动态生成 KPI 卡片
+        pass_label = kpi_data.get('pass_label', '合格')
+        fail_label = kpi_data.get('fail_label', '不合格')
+        target_mapping = kpi_data.get('target_mapping', {})
+        value_dist = kpi_data.get('value_distribution', {})
+
+        # 生成卡片 HTML
+        cards_html = f'''<div class="kpi-card">
+              <div class="kpi-card-title">{pass_label}率</div>
+              <div class="kpi-card-value primary">{kpi_data['pass_rate']:.1f}%</div>
+              <div class="kpi-card-sub">{pass_label}: {kpi_data['pass_count']} | {fail_label}: {kpi_data['fail_count']}</div>
+            </div>'''
+
+        # 如果 target_mapping 有多个 fail 值，按比例生成卡片
+        if target_mapping:
+            fail_values = {k: v for k, v in target_mapping.items() if k not in (kpi_data.get('target_column', ''),)}
+            total = kpi_data.get('total', 1)
+            if total <= 0:
+                total = 1
+            colors = ['danger', 'warning', 'primary']
+            ci = 0
+            for val_key, val_label in fail_values.items():
+                count = int(value_dist.get(val_key, 0))
+                if count > 0:
+                    pct = count / total * 100
+                    color_cls = colors[ci % len(colors)]
+                    cards_html += f'''
+            <div class="kpi-card">
+              <div class="kpi-card-title">{val_label}比��</div>
+              <div class="kpi-card-value {color_cls}">{pct:.1f}%</div>
+              <div class="kpi-card-sub">{val_label}: {count} 条</div>
+            </div>'''
+                    ci += 1
+
         st.markdown(
             f"""
             <style>
@@ -872,21 +896,7 @@ def render_ai_report(t, df_active=None):
             <div class="kpi-section">
               <div class="kpi-title">1. 核心指标</div>
               <div class="kpi-grid">
-                <div class="kpi-card">
-                  <div class="kpi-card-title">整体良品率</div>
-                  <div class="kpi-card-value primary">{kpi_data['pass_rate']:.1f}%</div>
-                  <div class="kpi-card-sub">基准线，含轻微压连(1)与正常(0)</div>
-                </div>
-                <div class="kpi-card">
-                  <div class="kpi-card-title">虚焊失效率</div>
-                  <div class="kpi-card-value danger">{kpi_data['open_rate']:.1f}%</div>
-                  <div class="kpi-card-sub">虚焊(-1) {kpi_data['open_count']}颗｜风险：断路</div>
-                </div>
-                <div class="kpi-card">
-                  <div class="kpi-card-title">严重压连率</div>
-                  <div class="kpi-card-value warning">{kpi_data['severe_rate']:.1f}%</div>
-                  <div class="kpi-card-sub">严重压连(2) {kpi_data['severe_count']}颗｜风险：短路</div>
-                </div>
+                {cards_html}
               </div>
             </div>
             """,
@@ -899,6 +909,6 @@ def render_ai_report(t, df_active=None):
         if report_is_current:
             st.info("ℹ️ 尚未生成描述性报告。请点击上方按钮开始分析。")
         else:
-            st.warning(f"当前筛选已切换为 {filter_desc}，请重新生成描述性报告以使用筛选后的芯片数据。")
+            st.warning(f"当前筛选已切换为 {filter_desc}，请重新生成描述性报告以使用筛选后的数据。")
     else:
         render_report(text_report, "📝 文字识别分析报告（基于统计数据）", text_time_str, "text")
