@@ -665,26 +665,26 @@ def render_data_cleaning(df_raw, t, id_col=None):
                     import traceback as tb
                     st.code(tb.format_exc())
 
+    def _show_cleaning_result_if_done():
+        """如果通用清洗已完成，展示清洗结果概览（不依赖当前清洗模式）"""
+        if st.session_state.get('generic_cleaning_done') and st.session_state.get('df_clean') is not None:
+            cleaned_df = st.session_state['df_clean']
+            st.divider()
+            st.subheader("📊 清洗后数据概览")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("行数", len(cleaned_df))
+            with col2:
+                st.metric("列数", len(cleaned_df.columns))
+            with st.expander("🔍 查看清洗后数据", expanded=False):
+                df_display = cleaned_df.head(50).copy()
+                for col in df_display.select_dtypes(include=['category']).columns:
+                    df_display[col] = df_display[col].astype(str)
+                df_display = _fix_duplicate_columns(df_display)
+                st.dataframe(df_display, width="stretch", height=420)
+
     # 通用清洗完成后，在页面底部持久展示清洗结果概览
     _show_cleaning_result_if_done()
-
-def _show_cleaning_result_if_done():
-    """如果通用清洗已完成，展示清洗结果概览（不依赖当前清洗模式）"""
-    if st.session_state.get('generic_cleaning_done') and st.session_state.get('df_clean') is not None:
-        cleaned_df = st.session_state['df_clean']
-        st.divider()
-        st.subheader("📊 清洗后数据概览")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("行数", len(cleaned_df))
-        with col2:
-            st.metric("列数", len(cleaned_df.columns))
-        with st.expander("🔍 查看清洗后数据", expanded=False):
-            df_display = cleaned_df.head(50).copy()
-            for col in df_display.select_dtypes(include=['category']).columns:
-                df_display[col] = df_display[col].astype(str)
-            df_display = _fix_duplicate_columns(df_display)
-            st.dataframe(df_display, width="stretch", height=420)
 
     # ==========================================
     
