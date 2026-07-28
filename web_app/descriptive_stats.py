@@ -813,7 +813,7 @@ def render_ai_report(t, df_active=None):
                     color_cls = colors[ci % len(colors)]
                     cards_html += f'''
             <div class="kpi-card">
-              <div class="kpi-card-title">{val_label}比��</div>
+              <div class="kpi-card-title">{val_label}比率</div>
               <div class="kpi-card-value {color_cls}">{pct:.1f}%</div>
               <div class="kpi-card-sub">{val_label}: {count} 条</div>
             </div>'''
