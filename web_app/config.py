@@ -807,10 +807,17 @@ def _detect_date_column(df: pd.DataFrame):
         if "日期" in col_str or "date" in col_str.lower():
             candidates.append(col)
     for col in list(dict.fromkeys(candidates + columns)):
-        try:
-            series = pd.to_datetime(df[col], errors='coerce')
-        except Exception:
+        # 跳过数值列：避免 0,1,2 等整数被 pd.to_datetime 误解析为 1970 年时间戳
+        if pd.api.types.is_numeric_dtype(df[col]):
             continue
+        try:
+            # format='mixed' 支持多种日期分隔符（/ - . 等）混合存在的情况
+            series = pd.to_datetime(df[col], errors='coerce', format='mixed')
+        except Exception:
+            try:
+                series = pd.to_datetime(df[col], errors='coerce')
+            except Exception:
+                continue
         if series.notna().mean() >= 0.6:
             return col
     return None
@@ -819,9 +826,12 @@ def _get_date_range(df: pd.DataFrame, date_col: str):
     if df is None or df.empty or not date_col:
         return None, None
     try:
-        series = pd.to_datetime(df[date_col], errors='coerce').dropna()
+        series = pd.to_datetime(df[date_col], errors='coerce', format='mixed').dropna()
     except Exception:
-        return None, None
+        try:
+            series = pd.to_datetime(df[date_col], errors='coerce').dropna()
+        except Exception:
+            return None, None
     if series.empty:
         return None, None
     return series.min(), series.max()

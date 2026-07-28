@@ -4,6 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import re
+import shutil
+import glob
 import config as utils
 import data_cleaning as analysis
 import descriptive_stats
@@ -865,11 +867,34 @@ if df is not None:
         if 'data_schema' in st.session_state:
             del st.session_state['data_schema']
         st.session_state['data_fingerprint'] = data_fingerprint
-        # 新数据上传时删除旧 schema.json，确保 pipeline 子进程用新数据重建
-        _schema_json = os.path.join(os.path.dirname(__file__), '..', 'output', 'schema.json')
+        # 新数据上传时清除所有旧分析结果，确保 pipeline 子进程用新数据重建
+        _output_dir = os.path.join(os.path.dirname(__file__), '..', 'output')
+        # 1) 删除 schema.json
+        _schema_json = os.path.join(_output_dir, 'schema.json')
         if os.path.exists(_schema_json):
             os.remove(_schema_json)
-            print(f"[app.py] 已清除旧 schema.json（新数据指纹: {data_fingerprint[:16]}...）")
+        # 2) 清理 ML 报告残留（防止旧数据特征名污染新报告）
+        _ml_dir = os.path.join(_output_dir, 'ml_report')
+        if os.path.isdir(_ml_dir):
+            shutil.rmtree(_ml_dir)
+        # 3) 清理位置分析残留图表
+        _pos_dir = os.path.join(_output_dir, 'position_analysis_v2')
+        if os.path.isdir(_pos_dir):
+            shutil.rmtree(_pos_dir)
+        # 4) 清理 EDA 分析残留图表
+        for pattern in ['*.png', '*.json', '*.csv']:
+            for fp in glob.glob(os.path.join(_output_dir, 'analysis_report', pattern)):
+                try:
+                    os.remove(fp)
+                except OSError:
+                    pass
+        # 5) 清理旧 AI 文本分析结果
+        for fname in ['ai_text_analysis_results.json', 'ai_chart_analysis_results.json',
+                       'ai_chart_analysis_intermediate.json', 'analysis_summary.json']:
+            _path = os.path.join(_output_dir, fname)
+            if os.path.exists(_path):
+                os.remove(_path)
+        print(f"[app.py] 已清除所有旧分析结果（新数据指纹: {data_fingerprint[:16]}...）")
     
     if 'data_schema' not in st.session_state:
         with st.spinner("🤖 AI 正在分析数据结构，识别列含义..."):

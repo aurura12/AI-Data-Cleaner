@@ -269,8 +269,8 @@ def collect_generic_analysis(cleaned_csv: Optional[str] = None,
     # 位置效应：如有位置列
     analysis["position_stats"] = _compute_position_effect(df, schema, target_col)
 
-    # ML 特征重要性（若存在）
-    analysis["ml_importance"] = _read_ml_importance()
+    # ML 特征重要性（若存在且与当前 schema 匹配）
+    analysis["ml_importance"] = _read_ml_importance(schema)
 
     return analysis
 
@@ -353,10 +353,15 @@ def _compute_position_effect(df: pd.DataFrame, schema: Optional[DataSchema],
     }
 
 
-def _read_ml_importance() -> List[Dict[str, Any]]:
+def _read_ml_importance(schema: Optional[DataSchema] = None) -> List[Dict[str, Any]]:
     csv_path = os.path.join(ML_REPORT_DIR, "feature_importance_ranking.csv")
     if not os.path.exists(csv_path):
         return []
+    # 有时钟校验：如果提供了 schema，只接受当前 schema 中存在的特征名，
+    # 防止旧数据（如半导体）的 ML 结果污染新数据（如食品）的报告。
+    valid_features = None
+    if schema:
+        valid_features = {c.semantic_name for c in schema.columns} | {c.raw_name for c in schema.columns}
     try:
         mdf = pd.read_csv(csv_path)
         cols = [c for c in ["Feature", "Total_Score", "mean_importance"] if c in mdf.columns]
@@ -366,8 +371,11 @@ def _read_ml_importance() -> List[Dict[str, Any]]:
         recs = mdf.head(5)[keep].to_dict("records")
         out = []
         for r in recs:
+            feat_name = r.get("Feature")
+            if valid_features and feat_name not in valid_features:
+                continue  # 跳过不属于当前 schema 的特征
             out.append({
-                "feature": r.get("Feature"),
+                "feature": feat_name,
                 "score": round(float(r.get("Total_Score", r.get("mean_importance", 0))), 4),
             })
         return out

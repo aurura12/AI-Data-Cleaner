@@ -147,6 +147,11 @@ class DataSchema:
             search_text = (col.semantic_name + ' ' + col.raw_name).lower()
             if any(k in search_text for k in keywords_lower):
                 return col.raw_name
+
+        # 第三轮: 按 role/type 匹配（关键词匹配列的角色或数据类型）
+        for col in self.columns:
+            if col.role and any(k.lower() in col.role.lower() for k in keywords):
+                return col.raw_name
         return None
 
     def get_numeric_features(self) -> List[str]:
