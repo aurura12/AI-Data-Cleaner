@@ -315,8 +315,20 @@ class GenericAnalyzer:
             print(">>> 跳过特征对比图: 无有效的 pass/fail 状态")
             return
 
-        fig, axes = plt.subplots(2, 3, figsize=(16, 11))
-        axes = axes.flatten()
+        # 根据实际特征数动态选择子图网格大小，避免出现空白子图
+        n_features = len(core_features)
+        if n_features <= 1:
+            n_rows, n_cols = 1, 1
+        elif n_features == 2:
+            n_rows, n_cols = 1, 2
+        elif n_features <= 4:
+            n_rows, n_cols = 2, 2
+        elif n_features <= 6:
+            n_rows, n_cols = 2, 3
+        else:
+            n_rows, n_cols = 3, 3
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(16, 5 * n_rows))
+        axes = np.array(axes).flatten()
 
         my_palette = {pass_label: '#2ECC71', fail_label: '#E74C3C'}
 
@@ -350,7 +362,7 @@ class GenericAnalyzer:
         plt.suptitle(f"关键参数 vs {pass_label}/{fail_label} 分布 (样本数 N={len(plot_df)})", fontsize=15, y=1.02)
         plt.tight_layout()
 
-        save_path = os.path.join(self.output_dir, '2_核心特征分布_2x3.png')
+        save_path = os.path.join(self.output_dir, f'2_核心特征分布_{n_rows}x{n_cols}.png')
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
         print(f"[图表生成] 已保存: {save_path}")

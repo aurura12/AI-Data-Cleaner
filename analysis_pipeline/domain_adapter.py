@@ -588,9 +588,16 @@ def build_static_report_html(analysis: Dict[str, Any],
     feats = analysis.get("feature_stats", [])
     if feats:
         html.append('<h3>关键特征差异</h3>')
+        # 文件名随特征数动态变化（2_核心特征分布_{n}x{m}.png），用 glob 自动匹配
+        import glob as _glob
+        feat_chart_pattern = os.path.join(ML_REPORT_DIR, "..", "analysis_report", "2_核心特征分布_*.png")
+        feat_candidates = sorted(_glob.glob(feat_chart_pattern))
+        feat_img = (
+            f"output/analysis_report/{os.path.basename(feat_candidates[0])}"
+            if feat_candidates else "output/analysis_report/2_核心特征分布_2x2.png"
+        )
         html.append(
-            '<div class="chart-wrapper"><img src="output/analysis_report/2_核心特征分布_2x3.png" '
-            'alt="关键特征分布"></div>'
+            f'<div class="chart-wrapper"><img src="{feat_img}" alt="关键特征分布"></div>'
         )
         html.append("<p>以下为特征在合格与不合格样本间的统计对比：</p><ul>")
         for f in feats[:8]:
