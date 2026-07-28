@@ -530,24 +530,34 @@ def build_report_prompt(analysis: Dict[str, Any],
 {chart_list}
 """
 
+    # 根据实际数据动态构建章节要求列表
+    sections_required = []
+    sections_required.append('<h2>一、总体介绍</h2>')
+    sections_required.append('<h2>二、核心分布现状</h2>')
+    if analysis.get("feature_stats"):
+        sections_required.append('<h2>三、关键特征差异</h2>')
+    if analysis.get("correlations"):
+        sections_required.append('<h2>四、参数关联性</h2>')
+    if analysis.get("drift"):
+        sections_required.append('<h2>五、趋势/漂移</h2>')
+    if analysis.get("position_stats"):
+        sections_required.append('<h2>六、位置/空间效应</h2>')
+    if analysis.get("ml_importance"):
+        sections_required.append('<h2>七、机器学习归因</h2>')
+    sections_required.append('<h2>八、总结与优化建议</h2>')
+    sections_text = "\n".join(sections_required)
+
     prompt += f"""
 【任务要求】
-1. 输出一份结构完整的 HTML 报告内容（从 <div class="section-card"> 开始，到 </div> 结束），
-   可包含 <h2>/<h3>/<p>/<ul>/<li> 以及 <div class="chart-wrapper"><img .../></div>。
-2. 报告必须按顺序包含以下所有有数据的章节，不可跳过或合并：
-   - 一、总体介绍（用一句话概括数据主题，不要臆测行业细节）
-   - 二、核心分布现状（结合目标列分布与关键特征统计）
-   - 三、关键特征差异（合格 vs 不合格对比，指出风险区间）——必须提供
-   - 四、参数关联性（若统计中有相关性数据则必须分析）——有数据则必须写
-   - 五、趋势/漂移（若统计中有漂移数据则必须分析）——有数据则必须写
-   - 六、位置/空间效应（若统计中有位置数据则必须分析）
-   - 七、机器学习归因（若统计中有特征重要性则必须分析）
-   - 八、总结与优化建议（每条务必以“◆ 建议”开头，使用审慎口吻，避免绝对化指令）
-3. 【重要】若有统计数据但缺少对应章节，视为不完整报告。
-4. 全程使用中文；字段一律使用业务背景中给出的显示名/语义名，不要出现原始英文列名或下划线字段名。
-5. 每个图表对应一段分析，每段至少 3-5 句话；建议紧跟对应图表下方。
-6. 只能基于【统计数据事实】撰写，严禁编造不存在的数值、百分比或物理区间。
-7. 直接输出 HTML 片段，不要包含 ```markdown 或 ```html 标记，不要额外解释。
+1. 输出一份结构完整的 HTML 报告内容（从 <div class="section-card"> 开始，到 </div> 结束）。
+2. 报告必须严格按照以下章节模板输出，每个章节的 <h2> 标题必须一字不差：
+{sections_text}
+
+3. 【强制】上列出的每个章节都必须有实际内容，不得跳过。
+   例如若列出了"三、关键特征差异"，则必须写一段分析。
+4. 全程使用中文；字段一律使用业务背景中给出的显示名/语义名。
+5. 只能基于【统计数据事实】撰写，严禁编造数据。
+6. 直接输出 HTML，不要包含 ```html 标记。
 
 请开始生成报告："""
     return prompt
