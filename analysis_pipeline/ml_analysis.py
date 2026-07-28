@@ -409,8 +409,12 @@ def run_ml_analysis(input_path=None, output_path=None, schema=None):
     # 图4: 简单决策树 (生成人类可读的规则)
     print("[可视] 生成决策树规则图...")
     # 只用最重要的2个特征来画树，方便看阈值
-    top_2_features = importance_df['Feature'].head(2).tolist()
-    X_tree = X_imputed[top_2_features]
+    # 注意: importance_df['Feature'] 是 display_name（可能不含单位如(℃)），
+    #        X_imputed 列名是 raw_name（含单位），需要反向映射后使用 raw_name 索引
+    _feat_to_raw = {name_mapping.get(f, f): f for f in valid_features}
+    top_2_display = importance_df['Feature'].head(2).tolist()
+    top_2_raw = [_feat_to_raw.get(d, d) for d in top_2_display]
+    X_tree = X_imputed[top_2_raw]
     
     tree_viz = DecisionTreeClassifier(max_depth=3, class_weight='balanced', min_samples_leaf=10)
     tree_viz.fit(X_tree, y)
@@ -418,19 +422,19 @@ def run_ml_analysis(input_path=None, output_path=None, schema=None):
     plt.figure(figsize=(16, 9))
     plot_tree(
         tree_viz, 
-        feature_names=top_2_features, 
+        feature_names=top_2_display, 
         filled=True, 
         rounded=True,
         class_names=[f'{pass_label}(合格)', f'{fail_label}(风险)'], 
         proportion=True, # 显示比例而不是数量
         fontsize=12
     )
-    plt.title(f"基于[{top_2_features[0]}]与[{top_2_features[1]}]的判定规则树", fontsize=18)
+    plt.title(f"基于[{top_2_display[0]}]与[{top_2_display[1]}]的判定规则树", fontsize=18)
     img_path_4 = os.path.join(dir_to_save, '4_决策树阈值规则.png')
     plt.savefig(img_path_4, dpi=300)
     plt.close()
     
-    tree_desc = f"决策树规则摘要：基于 {top_2_features} 生成可读的阈值规则图。"
+    tree_desc = f"决策树规则摘要：基于 {top_2_display} 生成可读的阈值规则图。"
 
     analysis_results.append({
         "chart_name": "4.决策树规则分析",
