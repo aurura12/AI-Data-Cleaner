@@ -8,6 +8,15 @@ from typing import Dict, Optional
 from openai import OpenAI
 from datetime import datetime
 
+# 确保子进程也能加载 .env 中的 API key
+try:
+    from dotenv import load_dotenv
+    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+except ImportError:
+    pass
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from project_paths import (

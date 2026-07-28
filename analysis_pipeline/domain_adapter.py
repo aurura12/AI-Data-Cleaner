@@ -21,6 +21,15 @@ from typing import Dict, Any, List, Optional, Tuple
 import pandas as pd
 import numpy as np
 
+# 确保子进程也能加载 .env 中的 API key
+try:
+    from dotenv import load_dotenv
+    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+except ImportError:
+    pass
+
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _ROOT)
 sys.path.insert(0, os.path.join(_ROOT, "web_app"))
