@@ -935,8 +935,8 @@ if df is not None:
     else:
         # 回退到关键词匹配
         columns = list(df.columns)
-        possible_targets = ['压连', '结果', '状态', '良率', 'class', 'label', 'target',
-                            'Pass', 'Fail', 'defect', 'quality', 'grade', 'outcome']
+        possible_targets = ['结果', '状态', '良率', 'grade', 'quality',
+                            'class', 'label', 'target', 'Pass', 'Fail', 'defect', 'outcome']
         default_target_index = len(columns) - 1
         for pt in possible_targets:
             for col in columns:

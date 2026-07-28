@@ -103,19 +103,40 @@ def run_position_analysis(input_path=None, output_dir=None, schema=None):
         return []
 
     # --- 语义列名解析 ---
+    pos_col = None
+    pass_col = None
+
     if schema:
-        pos_col = schema.find_column('position', 'code', '位置') or 'Position_Code'
-        pass_col = schema.find_column('pass', '良率', 'label') or 'Is_Pass'
+        pos_col = schema.find_column('position', 'code', '位置')
+        pass_col = schema.find_column('pass', '良率', 'label')
+        if not pass_col:
+            # 用 schema 的目标列作为良率列
+            tc = schema.get_target_column()
+            if tc and tc in df.columns:
+                pass_col = tc
+                df['_Pass_Target'] = df[tc]
     else:
-        pos_col = 'Position_Code'
-        pass_col = 'Is_Pass'
+        # 无 schema 时启发式查找位置列
+        for c in df.columns:
+            if any(k in c.lower() for k in ['position', '位置', 'code', '工位', '区域', 'zone']):
+                pos_col = c
+                break
 
-    if pass_col not in df.columns and 'Label_Pass' in df.columns:
-        df['Is_Pass'] = df['Label_Pass']
-        pass_col = 'Is_Pass'
+    # 尝试找良率列：优先 schema 目标列，其次 Is_Pass/Label_Pass，最后 0/1 列
+    if not pass_col:
+        for name in ['Is_Pass', 'Label_Pass', 'pass', 'Pass', 'label', 'Label', '良率', '合格']:
+            if name in df.columns:
+                pass_col = name
+                break
+    if not pass_col:
+        for c in df.columns:
+            uniq = set(str(u) for u in df[c].dropna().unique())
+            if uniq <= {"0", "1"}:
+                pass_col = c
+                break
 
-    if pass_col not in df.columns:
-        print("错误: 数据中未找到良率列")
+    if not pass_col:
+        print("错误: 数据中未找到良率/目标列")
         return []
 
     if pos_col not in df.columns:

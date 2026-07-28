@@ -60,8 +60,26 @@ def clean_data_from_file(input_path, output_path=None):
     print(f"初始读取行数: {len(raw_df)}")
     raw_df.dropna(how='all', inplace=True)
     
-    # 执行清洗流程
-    df = raw_df.copy()
+    # 检测是否为半导体专用数据格式；若不是，跳过半导体专用清洗步骤
+    first_row_text = ' '.join(str(v) for v in raw_df.iloc[0].values)
+    _is_semiconductor = ('芯片号' in raw_df.columns or '倒焊日期' in first_row_text
+                        or '压连' in first_row_text or '真空度' in first_row_text)
+    if not _is_semiconductor:
+        print("⚠️ 未检测到半导体数据格式，执行基础清洗后直接返回")
+        df = raw_df.dropna(how='all').copy()
+        # 基础表头清洗
+        first_row_text_clean = ' '.join(str(v) for v in df.iloc[0].values)
+        has_header = any(kw in first_row_text_clean for kw in ['日期', '时间', '温度', '压力',
+                                                                 '编号', 'ID', 'id', '批次', '类别'])
+        if has_header:
+            df.columns = df.iloc[0].astype(str).str.strip()
+            df = df.iloc[1:].reset_index(drop=True)
+        if output_path:
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            df.to_csv(output_path, index=False, encoding='utf-8-sig')
+        return df
+
+    # 完整半导体专用清洗流程
     
     # 步骤1: 智能表头识别与清洗
     print("\n[步骤 1/5] 智能表头识别与清洗...")
@@ -864,7 +882,7 @@ def render_data_cleaning(df_raw, t, id_col=None):
                         st.session_state['regex_stats'] = rstats
                         st.success("✅ 步骤 3 完成")
                         st.info(f"解析成功: {rstats['valid']} / {rstats['total']}")
-                        cols_3 = [c for c in ['芯片号','Chip_Source','Date_String','Batch_ID','Wafer_Index','Position_Code'] if c in df3.columns]
+                        cols_3 = list(df3.columns[:min(10, len(df3.columns))])
                         df_display = _fix_duplicate_columns(df3[cols_3].head(50).copy())
                         # 修复：category类型会导致Glide Data Grid渲染空白
                         for col in df_display.select_dtypes(include=['category']).columns:
@@ -898,7 +916,7 @@ def render_data_cleaning(df_raw, t, id_col=None):
                         st.info(f"Taper非空: {fstats['taper_nonnull']}")
                         st.info(f"时间序列非空: {fstats['time_nonnull']}")
                         # 【修改】: 添加环境参数到显示列表
-                        cols_4 = [c for c in ['芯片号','Total_Indium_Height','Calc_Circuit_Range','Indium_Taper_Zscore','Time_Seq_Day','Equipment_Temp','Vacuum_Level'] if c in df4.columns]
+                        cols_4 = list(df4.columns[:min(10, len(df4.columns))])
                         df_display = _fix_duplicate_columns(df4[cols_4].head(50).copy())
                         # 修复：category类型会导致Glide Data Grid渲染空白
                         for col in df_display.select_dtypes(include=['category']).columns:
@@ -916,7 +934,7 @@ def render_data_cleaning(df_raw, t, id_col=None):
                         if not np.isnan(lstats['pass_rate']):
                             st.info(f"良品率: {lstats['pass_rate']:.2%}")
                         st.info(f"样本量: {lstats['rows']}")
-                        cols_5 = [c for c in ['芯片号','Label_Pass','Force_kg','Leveling_Mode'] if c in df5.columns]
+                        cols_5 = list(df5.columns[:min(10, len(df5.columns))])
                         df_display = _fix_duplicate_columns(df5[cols_5].head(50).copy())
                         # 修复：category类型会导致Glide Data Grid渲染空白
                         for col in df_display.select_dtypes(include=['category']).columns:
@@ -1007,7 +1025,7 @@ def render_data_cleaning(df_raw, t, id_col=None):
         r = st.session_state.get('regex_stats')
         if r:
             st.info(f"解析成功: {r['valid']} / {r['total']}")
-            cols_3b = [c for c in ['芯片号','Chip_Source','Date_String','Batch_ID','Wafer_Index','Position_Code'] if c in st.session_state['df_clean'].columns]
+            cols_3b = list(st.session_state['df_clean'].columns[:min(10, len(st.session_state['df_clean'].columns))])
             df_display = st.session_state['df_clean'][cols_3b].head(50).copy()
             # 修复：category类型会导致Glide Data Grid渲染空白
             for col in df_display.select_dtypes(include=['category']).columns:
@@ -1030,8 +1048,8 @@ def render_data_cleaning(df_raw, t, id_col=None):
             st.info(f"平整度非空: {f['range_nonnull']}")
             st.info(f"Taper非空: {f['taper_nonnull']}")
             st.info(f"时间序列非空: {f['time_nonnull']}")
-            # 【修改】: 添加环境参数到显示列表
-            cols_4b = [c for c in ['芯片号','Total_Indium_Height','Calc_Circuit_Range','Indium_Taper_Zscore','Time_Seq_Day','Equipment_Temp','Vacuum_Level'] if c in st.session_state['df_clean'].columns]
+            # 显示前10列
+            cols_4b = list(st.session_state['df_clean'].columns[:min(10, len(st.session_state['df_clean'].columns))])
             # 处理重复列名（避免Arrow转换错误）
             df_display = st.session_state['df_clean'][cols_4b].head(50).copy()
             # 修复：category类型会导致Glide Data Grid渲染空白
@@ -1054,7 +1072,7 @@ def render_data_cleaning(df_raw, t, id_col=None):
             if not np.isnan(l['pass_rate']):
                 st.info(f"良品率: {l['pass_rate']:.2%}")
             st.info(f"样本量: {l['rows']}")
-            cols_5b = [c for c in ['芯片号','Label_Pass','Force_kg','Leveling_Mode'] if c in st.session_state['df_clean'].columns]
+            cols_5b = list(st.session_state['df_clean'].columns[:min(10, len(st.session_state['df_clean'].columns))])
             # 处理重复列名（避免Arrow转换错误）
             df_display = st.session_state['df_clean'][cols_5b].head(50).copy()
             # 修复：category类型会导致Glide Data Grid渲染空白

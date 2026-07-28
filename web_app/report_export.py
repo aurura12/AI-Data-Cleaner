@@ -133,12 +133,12 @@ def _build_kpi_html(t, kpi_stats):
                 <div style="color:#666; font-size:12px; margin-top:5px;">{t.get('pdf_baseline', '基准线')}</div>
             </div>
             <div style="background:#fdecec; padding:15px; border-radius:8px; width:30%; min-width:220px; text-align:center;">
-                <div style="font-weight:bold; margin-bottom:5px;">{t.get('pdf_open_fail', '虚焊失效率')}</div>
+                <div style="font-weight:bold; margin-bottom:5px;">{t.get('pdf_open_fail', '不合格率')}</div>
                 <div style="color:#e74c3c; font-size:24px; font-weight:bold;">{kpi_stats.get('open_rate', 0):.1f}%</div>
                 <div style="color:#666; font-size:12px; margin-top:5px;">{t.get('pdf_count', '数量: ')}{kpi_stats.get('open_count', 0)}</div>
             </div>
             <div style="background:#fef6e4; padding:15px; border-radius:8px; width:30%; min-width:220px; text-align:center;">
-                <div style="font-weight:bold; margin-bottom:5px;">{t.get('pdf_severe_fail', '严重压连率')}</div>
+                <div style="font-weight:bold; margin-bottom:5px;">{t.get('pdf_severe_fail', '严重缺陷率')}</div>
                 <div style="color:#f39c12; font-size:24px; font-weight:bold;">{kpi_stats.get('severe_rate', 0):.1f}%</div>
                 <div style="color:#666; font-size:12px; margin-top:5px;">{t.get('pdf_count', '数量: ')}{kpi_stats.get('severe_count', 0)}</div>
             </div>
@@ -186,8 +186,8 @@ def _clean_pdf_text(text):
 def _build_kpi_cards_story(styles, t, kpi_stats):
     cards = [
         (t.get("pdf_yield", "整体良品率"), f"{kpi_stats.get('pass_rate', 0):.1f}%", t.get("pdf_baseline", "基准线"), "#e8f6fd", "#3498db"),
-        (t.get("pdf_open_fail", "虚焊失效率"), f"{kpi_stats.get('open_rate', 0):.1f}%", f"{t.get('pdf_count', '数量: ')}{kpi_stats.get('open_count', 0)}", "#fdecec", "#e74c3c"),
-        (t.get("pdf_severe_fail", "严重压连率"), f"{kpi_stats.get('severe_rate', 0):.1f}%", f"{t.get('pdf_count', '数量: ')}{kpi_stats.get('severe_count', 0)}", "#fef6e4", "#f39c12"),
+        (t.get("pdf_open_fail", "不合格率"), f"{kpi_stats.get('open_rate', 0):.1f}%", f"{t.get('pdf_count', '数量: ')}{kpi_stats.get('open_count', 0)}", "#fdecec", "#e74c3c"),
+        (t.get("pdf_severe_fail", "严重缺陷率"), f"{kpi_stats.get('severe_rate', 0):.1f}%", f"{t.get('pdf_count', '数量: ')}{kpi_stats.get('severe_count', 0)}", "#fef6e4", "#f39c12"),
     ]
     cells = []
     for title, value, footer, bg, accent in cards:
@@ -551,8 +551,8 @@ def generate_full_report_pdf(t):
         table_data = [
             [
                 Paragraph(f"<b>{t.get('pdf_yield', '整体良品率')}</b>", styles["CN_Normal"]),
-                Paragraph(f"<b>{t.get('pdf_open_fail', '虚焊失效率')}</b>", styles["CN_Normal"]),
-                Paragraph(f"<b>{t.get('pdf_severe_fail', '严重压连率')}</b>", styles["CN_Normal"]),
+                Paragraph(f"<b>{t.get('pdf_open_fail', '不合格率')}</b>", styles["CN_Normal"]),
+                Paragraph(f"<b>{t.get('pdf_severe_fail', '严重缺陷率')}</b>", styles["CN_Normal"]),
             ],
             [
                 Paragraph(f"<font color='#3498db' size=14><b>{kpi_stats.get('pass_rate', 0):.1f}%</b></font>", styles["CN_Normal"]),
