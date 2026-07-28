@@ -935,8 +935,11 @@ def load_data_sidebar(t):
                 del st.session_state["data_choice_radio"]
 
         upload_ts = st.session_state.get("data_upload_ts")
-        base_date_col = _detect_date_column(base_df) if base_df is not None else None
-        new_date_col = _detect_date_column(df)
+        # 优先用 LLM 识别的 DataSchema 中的日期列，回退到规则启发式
+        _schema = st.session_state.get('data_schema')
+        _schema_date_col = _schema.find_column("date", "时间", "datetime") if _schema else None
+        base_date_col = _schema_date_col or (_detect_date_column(base_df) if base_df is not None else None)
+        new_date_col = _schema_date_col or _detect_date_column(df)
 
         base_start, base_end = _get_date_range(base_df, base_date_col)
         new_start, new_end = _get_date_range(df, new_date_col)
