@@ -131,8 +131,6 @@ def generate_text_based_report(
             content = re.sub(r'<h3>3\.1\s*时间稳定性与参数漂移.*?(?=<h3>|</div>)', '', content, flags=re.S)
             content = re.sub(r'<div class="chart-wrapper">.*?3_周度趋势分析.*?</div>\s*<p>.*?</p>', '', content, flags=re.S)
             content = re.sub(r'<div class="chart-wrapper">.*?4_特征漂移分析.*?</div>\s*<p>.*?</p>', '', content, flags=re.S)
-            content = re.sub(r'<h3>3\.\d+\s*晶圆批次效应分析.*?(?=<h3>|</div>)', '', content, flags=re.S)
-            content = re.sub(r'<div class="chart-wrapper">.*?6_晶圆次序效应分析.*?</div>\s*<p>.*?</p>', '', content, flags=re.S)
             content = re.sub(r'<h3>3\.2\s*位置编码异质性分析', '<h3>3.1 位置编码异质性分析', content)
             content = re.sub(r'<div class="section-card">\s*<h2>1\. 核心指标</h2>.*?</div>\s*(?=<div class="section-card">)', '', content, flags=re.S)
             def _ensure_suggestions(match):
@@ -187,7 +185,7 @@ def main():
     print("\n[步骤 2/4] 提取图表数据（从EDA/Position绘图代码）...")
     try:
         from chart_data_extractor import extract_all_chart_data
-        chart_data_text, chart_data_dict = extract_all_chart_data(base_dir)
+        chart_data_text, chart_data_dict = extract_all_chart_data(base_dir, schema=schema)
         print(f"已提取图表数据（长度: {len(chart_data_text)} 字符）")
         print(f"\n图表数据预览:\n{chart_data_text[:300]}...")
     except Exception as e:
