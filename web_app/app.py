@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 import re
 import config as utils
 import data_cleaning as analysis
@@ -864,6 +865,11 @@ if df is not None:
         if 'data_schema' in st.session_state:
             del st.session_state['data_schema']
         st.session_state['data_fingerprint'] = data_fingerprint
+        # 新数据上传时删除旧 schema.json，确保 pipeline 子进程用新数据重建
+        _schema_json = os.path.join(os.path.dirname(__file__), '..', 'output', 'schema.json')
+        if os.path.exists(_schema_json):
+            os.remove(_schema_json)
+            print(f"[app.py] 已清除旧 schema.json（新数据指纹: {data_fingerprint[:16]}...）")
     
     if 'data_schema' not in st.session_state:
         with st.spinner("🤖 AI 正在分析数据结构，识别列含义..."):
