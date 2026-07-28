@@ -1109,7 +1109,9 @@ def render_deep_mining(df, t, target_col, id_col=None):
                 # Reload ml module to ensure latest changes are picked up
                 import importlib
                 importlib.reload(ml)
-                results = ml.run_ml_analysis(input_path=temp_input)
+                # 传入 schema（如有），确保 ML 分析走通用路径而非回退路径
+                _ml_schema = st.session_state.get('data_schema')
+                results = ml.run_ml_analysis(input_path=temp_input, schema=_ml_schema)
                 st.session_state['deep_mining_results'] = results
                 st.success("挖掘完成！")
             except Exception as e:

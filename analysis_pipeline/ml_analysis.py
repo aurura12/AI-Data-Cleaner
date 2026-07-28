@@ -193,25 +193,25 @@ def run_ml_analysis(input_path=None, output_path=None, schema=None):
             df['Position_Code_Enc'] = LabelEncoder().fit_transform(df['Position_Code'])
             feature_candidates.append('Position_Code_Enc')
     else:
-        # 回退到硬编码半导体特征
-        col_height = 'Total_Indium_Height'
-        col_range = 'Calc_Circuit_Range'
-        col_pressure = 'Force_kg'
-        col_temp = 'Equipment_Temp'
-        col_vacuum = 'Vacuum_Level'
-        
-        # 位置编码
-        if 'Position_Code' in df.columns:
-            df['Position_Code'] = df['Position_Code'].fillna('Unknown').astype(str)
-            df['Position_Code_Enc'] = LabelEncoder().fit_transform(df['Position_Code'])
-        else:
-            df['Position_Code_Enc'] = 0
-
-        feature_candidates = [
-            col_height, col_range, 'Indium_Taper_Zscore',
-            col_pressure, col_temp, col_vacuum,
-            'Time_Seq_Day', 'Position_Code_Enc'
+        # 无 schema 时：用数据启发式，选所有数值列作为候选特征
+        numeric_cols = [
+            c for c in df.columns
+            if pd.api.types.is_numeric_dtype(df[c]) and c != target_col
         ]
+        feature_candidates = list(numeric_cols)
+
+        # 尝试加入位置编码（若有名称含 position/位置/code 的列）
+        pos_col = next(
+            (c for c in df.columns
+             if any(k in c.lower() for k in ['position', '位置', 'code', '工位'])),
+            None
+        )
+        if pos_col and pos_col in df.columns and pos_col != target_col:
+            df['Position_Code_Enc'] = LabelEncoder().fit_transform(
+                df[pos_col].fillna('Unknown').astype(str)
+            )
+            if 'Position_Code_Enc' not in feature_candidates:
+                feature_candidates.append('Position_Code_Enc')
     
     # 仅保留存在的列
     valid_features = [f for f in feature_candidates if f in df.columns]
@@ -219,12 +219,8 @@ def run_ml_analysis(input_path=None, output_path=None, schema=None):
     for col in X.columns:
         X[col] = _normalize_numeric_series(X[col])
     
-    # --- C. 增加物理交互项 (仅半导体特定逻辑) ---
-    if not schema:  # 只有半导体场景有明确的物理公式
-        col_height_present = 'Total_Indium_Height' if 'Total_Indium_Height' in X.columns else None
-        col_pressure_present = 'Force_kg' if 'Force_kg' in X.columns else None
-        if col_height_present and col_pressure_present:
-            X['Interaction_Press_Height'] = X[col_height_present] * X[col_pressure_present]
+    # --- C. 增加交互项（仅在 schema 中有先验知识时启用） ---
+    # 无 schema 时不做任何特定领域假设，让模型自行发现交互关系
     
     # --- D. 显示名映射 (用于绘图展示，优先使用 schema display_name) ---
     name_mapping = {}
