@@ -595,22 +595,11 @@ def render_data_cleaning(df_raw, t, id_col=None):
                         target_column_override=target_override
                     )
 
-                    # Layer 2: 如果有生成的代码或检测到问题，展示给用户
-                    l2_data = stats.get('layer2', {})
-                    if l2_data.get('code'):
-                        with st.expander("🔍 查看LLM生成的清洗代码", expanded=True):
-                            st.code(l2_data['code'], language='python')
-                            # 显示检测到的问题
-                            detected = l2_data.get('detected_issues', [])
-                            if detected:
-                                st.markdown("**LLM检测到的问题：**")
-                                for d in detected:
-                                    sev = d.get('severity', 'medium')
-                                    icon = {'high': '🔴', 'medium': '🟡', 'low': '🔵'}.get(sev, '⚪')
-                                    st.caption(f"{icon} {d.get('column', '全局')}: {d.get('reason', '')}")
-
-                    # 保存到 session_state
+                    # 保存到 session_state（持久化，下载等操作触发rerun后不丢失）
                     st.session_state['df_clean'] = cleaned_df
+                    st.session_state['generic_cleaning_done'] = True
+                    st.session_state['cleaning_stats'] = stats
+                    st.session_state['cleaning_target'] = target_override
                     st.session_state['semiconductor_processor_state'] = {
                         'initialized': True,
                         'headers_cleaned': True,
@@ -619,51 +608,66 @@ def render_data_cleaning(df_raw, t, id_col=None):
                         'labels_processed': True,
                         'final_saved': True
                     }
-
-                    st.success("✅ 通用清洗完成！")
-
-                    # 展示清洗统计
-                    stats_text = cleaning_code_generator.format_cleaning_stats(stats)
-                    st.code(stats_text, language=None)
-
-                    # 数据预览
-                    st.markdown("#### 清洗后数据预览")
-                    df_display = cleaned_df.head(50).copy()
-                    # category 类型会导致 Glide Data Grid 渲染空白，转回 object
-                    for col in df_display.select_dtypes(include=['category']).columns:
-                        df_display[col] = df_display[col].astype(str)
-                    df_display = _fix_duplicate_columns(df_display)
-                    st.dataframe(df_display, width="stretch", height=420)
-
-                    # 目标列分布
-                    target = target_override or schema.target_column
-                    if target and target in cleaned_df.columns:
-                        st.markdown("#### 目标列分布")
-                        col1_val, col2_val = st.columns(2)
-                        pass_count = int((cleaned_df[target] == 1).sum())
-                        fail_count = int((cleaned_df[target] == 0).sum())
-                        with col1_val:
-                            st.metric("良品 (Pass)", pass_count)
-                        with col2_val:
-                            st.metric("不良 (Fail)", fail_count)
-
-                    # 下载按钮
-                    csv_data = cleaned_df.to_csv(index=False, encoding='utf-8-sig')
-                    st.download_button(
-                        label="📥 下载清洗后数据",
-                        data=csv_data,
-                        file_name="cleaned_data.csv",
-                        mime="text/csv",
-                        type="primary"
-                    )
-
-                    # 标记清洗完成（用于清洗后重刷页面时仍显示预览）
-                    st.session_state['generic_cleaning_done'] = True
+                    st.rerun()
 
                 except Exception as e:
                     st.error(f"清洗失败: {e}")
                     import traceback as tb
                     st.code(tb.format_exc())
+
+        # 清洗完成后持久展示结果（不受 st.button 状态影响，下载/rerun 后仍显示）
+        if st.session_state.get('generic_cleaning_done') and st.session_state.get('df_clean') is not None:
+            cleaned_df = st.session_state['df_clean']
+            stats = st.session_state.get('cleaning_stats', {})
+            target = st.session_state.get('cleaning_target') or schema.target_column
+
+            st.success("✅ 通用清洗完成！")
+
+            # Layer 2: 展示 LLM 清洗代码
+            l2_data = stats.get('layer2', {})
+            if l2_data.get('code'):
+                with st.expander("🔍 查看LLM生成的清洗代码", expanded=False):
+                    st.code(l2_data['code'], language='python')
+                    detected = l2_data.get('detected_issues', [])
+                    if detected:
+                        st.markdown("**LLM检测到的问题：**")
+                        for d in detected:
+                            sev = d.get('severity', 'medium')
+                            icon = {'high': '🔴', 'medium': '🟡', 'low': '🔵'}.get(sev, '⚪')
+                            st.caption(f"{icon} {d.get('column', '全局')}: {d.get('reason', '')}")
+
+            # 清洗统计
+            stats_text = cleaning_code_generator.format_cleaning_stats(stats)
+            st.code(stats_text, language=None)
+
+            # 数据预览
+            st.markdown("#### 清洗后数据预览")
+            df_display = cleaned_df.head(50).copy()
+            for col in df_display.select_dtypes(include=['category']).columns:
+                df_display[col] = df_display[col].astype(str)
+            df_display = _fix_duplicate_columns(df_display)
+            st.dataframe(df_display, width="stretch", height=420)
+
+            # 目标列分布
+            if target and target in cleaned_df.columns:
+                st.markdown("#### 目标列分布")
+                col1_val, col2_val = st.columns(2)
+                pass_count = int((cleaned_df[target] == 1).sum())
+                fail_count = int((cleaned_df[target] == 0).sum())
+                with col1_val:
+                    st.metric("良品 (Pass)", pass_count)
+                with col2_val:
+                    st.metric("不良 (Fail)", fail_count)
+
+            # 下载按钮（持久化，点击下载 rerun 后不丢失）
+            csv_data = cleaned_df.to_csv(index=False, encoding='utf-8-sig')
+            st.download_button(
+                label="📥 下载清洗后数据",
+                data=csv_data,
+                file_name="cleaned_data.csv",
+                mime="text/csv",
+                type="primary"
+            )
 
     def _show_cleaning_result_if_done():
         """如果通用清洗已完成，展示清洗结果概览（不依赖当前清洗模式）"""
