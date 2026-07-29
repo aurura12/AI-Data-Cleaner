@@ -1241,9 +1241,27 @@ def render_deep_mining(df, t, target_col, id_col=None):
                         deep_mining_text += f"\n[图表分析: {res.get('chart_name', '')}]\n"
                         deep_mining_text += str(res.get('analysis_text', '')) + "\n"
 
-                # 3. 构建 Prompt
+                # 3. 加载 DataSchema（全行业通用，不再硬编码半导体知识）
+                _schema = st.session_state.get('schema', None)
+                _schema_ctx = ""
+                try:
+                    from analysis_pipeline.domain_adapter import describe_schema_for_llm
+                    _schema_ctx = describe_schema_for_llm(_schema)
+                except Exception:
+                    pass
+
+                # 从 schema 提取特征列表，用于 prompt 中的示例
+                _feature_hint = ""
+                if _schema:
+                    feats = [c.display_name or c.raw_name for c in _schema.columns if c.role == "feature"]
+                    if feats:
+                        _feature_hint = "如 " + "、".join(feats[:5]) + " 等参数"
+                
                 prompt = f"""
-你是一位资深半导体工艺专家。请结合以下两部分分析内容，总结出核心的工艺优化建议。
+你是一位资深数据分析与质量改进专家。请结合以下两部分分析内容，总结出核心的优化建议。
+
+【数据模式（字段含义参考）】
+{_schema_ctx}
 
 【输入1：描述性统计分析结论】
 {descriptive_report[:3000]} 
@@ -1252,7 +1270,7 @@ def render_deep_mining(df, t, target_col, id_col=None):
 {deep_mining_text[:3000]}
 
 【任务目标】
-请综合分析，识别导致良率下降的核心原因（如高度、压力、温度等参数的异常），并提出3-5条具体的、可执行的工艺优化建议。
+请综合分析，识别导致质量波动或目标变量异常的核心原因（{_feature_hint}），并提出3-5条具体的、可执行的改进建议。
 风格要求：专业、简洁、直接。
 
 【输出格式要求】
@@ -1260,7 +1278,7 @@ def render_deep_mining(df, t, target_col, id_col=None):
 {{
     "suggestions": [
         {{
-            "title": "建议标题 (例如：设立拦截红线：高度 > 11.65 μm)",
+            "title": "建议标题（简短的行动项名称）",
             "icon": "🛑", 
             "content": "详细的建议描述，包含数据支持和具体行动项。",
             "type": "critical"

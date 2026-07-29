@@ -530,31 +530,57 @@ def build_report_prompt(analysis: Dict[str, Any],
 {chart_list}
 """
 
-    # 根据实际数据动态构建章节要求列表
-    sections_required = []
-    sections_required.append('<h2>一、总体介绍</h2>')
-    sections_required.append('<h2>二、核心分布现状</h2>')
+    # 根据实际数据动态构建章节模板——用预填 HTML 占位结构，让 LLM 无法跳过
+    sections_template = []
+    sections_template.append("""<div class="section-card">
+<h2>一、总体介绍</h2>
+[请在此处撰写总体介绍内容（样本概况、良品率/不良率、核心发现简述），配图放在本段文字最后]
+</div>
+
+<div class="section-card">
+<h2>二、核心分布现状</h2>
+[请在此处描述目标变量的分布情况。注意：先写分析文字，配图放在本段文字最后]
+</div>""")
     if analysis.get("feature_stats"):
-        sections_required.append('<h2>三、关键特征差异</h2>')
+        sections_template.append("""<div class="section-card">
+<h2>三、关键特征差异</h2>
+[请在此处分析合格与不合格批次在各特征上的差异。注意：先写分析文字，配图放在本段文字最后]
+</div>""")
     if analysis.get("correlations"):
-        sections_required.append('<h2>四、参数关联性</h2>')
+        sections_template.append("""<div class="section-card">
+<h2>四、参数关联性</h2>
+[请在此处分析各参数之间的相关性，重点描述强相关对。注意：先写分析文字，配图放在本段文字最后]
+</div>""")
     if analysis.get("drift"):
-        sections_required.append('<h2>五、趋势/漂移</h2>')
+        sections_template.append("""<div class="section-card">
+<h2>五、趋势/漂移</h2>
+[请在此处分析各特征在时间维度上的趋势变化或漂移情况。注意：先写分析文字，配图放在本段文字最后]
+</div>""")
     if analysis.get("position_stats"):
-        sections_required.append('<h2>六、位置/空间效应</h2>')
+        sections_template.append("""<div class="section-card">
+<h2>六、位置/空间效应</h2>
+[请在此处分析不同位置/批次间的质量差异。注意：先写分析文字，配图放在本段文字最后]
+</div>""")
     if analysis.get("ml_importance"):
-        sections_required.append('<h2>七、机器学习归因</h2>')
-    sections_required.append('<h2>八、总结与优化建议</h2>')
-    sections_text = "\n".join(sections_required)
+        sections_template.append("""<div class="section-card">
+<h2>七、机器学习归因</h2>
+[请在此处引用机器学习特征重要性分析结果，指出对质量影响最大的特征。注意：先写分析文字，配图放在本段文字最后]
+</div>""")
+    sections_template.append("""<div class="section-card">
+<h2>八、总结与优化建议</h2>
+[请在此处总结核心发现，提出优化建议]
+</div>""")
+    sections_text = "\n".join(sections_template)
 
     prompt += f"""
 【任务要求】
-1. 输出一份结构完整的 HTML 报告内容（从 <div class="section-card"> 开始，到 </div> 结束）。
-2. 报告必须严格按照以下章节模板输出，每个章节的 <h2> 标题必须一字不差：
+1. 输出一份结构完整的 HTML 报告内容。
+2. 报告必须严格按照以下模板结构输出，模板中的每个章节都已预先定义好框架，你只需要填充方括号 [] 中的内容即可，不得删除、合并或跳过任何章节：
+
 {sections_text}
 
-3. 【强制】上列出的每个章节都必须有实际内容，不得跳过。
-   例如若列出了"三、关键特征差异"，则必须写一段分析。
+3. 【极其重要】上面模板中列出了多少个 <div class="section-card">，输出就必须包含同样数量的 <div class="section-card">，一个不能少，一个不能合并。
+4. 【图片布局】每个章节内，先写完整分析文字，最后在章节末尾放置配图。不要将图片插入在段落中间或文字中间打断阅读。
 4. 全程使用中文；字段一律使用业务背景中给出的显示名/语义名。
 5. 只能基于【统计数据事实】撰写，严禁编造数据。
 6. 直接输出 HTML，不要包含 ```html 标记。

@@ -53,6 +53,18 @@ def collect_analysis_text_data(base_dir: str) -> Dict:
 # 2. 使用文本LLM生成分析报告（基于 DataSchema，无行业硬编码）
 # ==========================================
 
+def _count_expected_sections(analysis_data: Dict) -> int:
+    """根据 analysis_data 计算预期的 <div class="section-card"> 数量。"""
+    count = 2  # 一、总体介绍 + 二、核心分布现状（始终存在）
+    if analysis_data.get("feature_stats"):   count += 1  # 三
+    if analysis_data.get("correlations"):    count += 1  # 四
+    if analysis_data.get("drift"):           count += 1  # 五
+    if analysis_data.get("position_stats"):  count += 1  # 六
+    if analysis_data.get("ml_importance"):   count += 1  # 七
+    count += 1  # 八、总结与优化建议（始终存在）
+    return count
+
+
 def generate_text_based_report(
     analysis_data: Dict,
     schema=None,
@@ -64,22 +76,27 @@ def generate_text_based_report(
     基于通用统计结果与 DataSchema，使用LLM生成综合报告。
     业务背景与目标含义全部来自 schema，不再写死任何行业知识。
     """
+    expected_sections = _count_expected_sections(analysis_data)
     prompt = build_report_prompt(analysis_data, schema, chart_data_text, chart_paths)
 
-    try:
-        client = OpenAI(
-            api_key=os.getenv("DASHSCOPE_API_KEY"),
-            base_url=os.getenv("DASHSCOPE_API_BASE") or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-        )
-        resp = client.chat.completions.create(
-            model=model_name,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3
-        )
-        content = ""
-        if resp and resp.choices:
-            content = resp.choices[0].message.content
-        if content:
+    for attempt in range(2):  # 最多重试 1 次
+        try:
+            client = OpenAI(
+                api_key=os.getenv("DASHSCOPE_API_KEY"),
+                base_url=os.getenv("DASHSCOPE_API_BASE") or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+            )
+            resp = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3
+            )
+            content = ""
+            if resp and resp.choices:
+                content = resp.choices[0].message.content
+            if not content:
+                return ""
+
+            # --- 后处理开始 ---
             content = content.strip()
             lines = content.split('\n')
             if lines and (lines[0].startswith('```html') or lines[0].startswith('```')):
@@ -100,11 +117,19 @@ def generate_text_based_report(
                 div_end = content.rfind('</div>')
                 if div_end > 0:
                     content = content[:div_end + 6].strip()
+
+            # 验证章节数量：统计 <div class="section-card"> 出现次数
+            actual_sections = len(re.findall(r'<div\s+class="section-card"', content))
+            if attempt == 0 and actual_sections != expected_sections:
+                print(f"[重试] 预期 {expected_sections} 个章节，实际只有 {actual_sections} 个，将重新生成...")
+                prompt += "\n\n【重要警告】你上次输出的章节不完整！本次必须生成所有列出的章节，一个都不能少！"
+                continue  # 重试
+
             content = re.sub(r'src="([^"]+?\.png)\s+alt=', r'src="\1" alt=', content)
             content = re.sub(r'</(div|h\d|p|li)>"\s*alt="[^"]*"[^>]*>', r'</\1>', content)
             content = re.sub(r'</(div|h\d|p|li)>\s*alt="[^"]*"[^>]*>', r'</\1>', content)
             content = re.sub(r'<div class="\s*alt="[^"]+">', r'<div class="chart-wrapper">', content)
-            content = re.sub(r'<h3>2\.3\s*参数间关联性与.*?</h3>', r'<h3>2.3 参数间关联性与“实验设计复盘”</h3>', content)
+            content = re.sub(r'<h3>2\.3\s*参数间关联性与.*?</h3>', r'<h3>2.3 参数间关联性与"实验设计复盘"</h3>', content)
             content = re.sub(r'alt="[^"]*占位符[^"]*"', 'alt="图表"', content, flags=re.IGNORECASE)
             content = re.sub(r'(?<!<img)(?<!<div)(?<!<span)(?<!<p)\s+alt="[^"]+"', r'', content)
             content = re.sub(r'alt="([^"]+)"\s*"([^>]*>)', r'alt="\1"\2', content)
@@ -157,15 +182,49 @@ def generate_text_based_report(
                 prefix, paragraph, suffix = match.group(1), match.group(2), match.group(3)
                 if "建议" not in paragraph or "◆ 建议" in paragraph:
                     return match.group(0)
-                paragraph = paragraph.replace("建议", "◆ 建议", 1)
+                # 只在"建议"是句首或前面是标点/空格时插入 ◆，避免拆散"优化建议""改进建议"等复合词
+                paragraph = re.sub(
+                    r'(^|[\s，。；：、])建议',
+                    r'\1◆ 建议',
+                    paragraph, count=1
+                )
                 paragraph = paragraph.replace("◆ 建议", "<br>◆ 建议", 1)
                 return f"{prefix}{paragraph}{suffix}"
             content = re.sub(r'(<p>)(.*?)(</p>)', _mark_advice, content, flags=re.S)
+
+            # 后处理：将每个 section-card 内的 chart-wrapper 移到章节末尾（文字在前，图片在后）
+            def _move_charts_to_end(html_text):
+                """把每个 <div class="section-card"> 内部的 <div class="chart-wrapper"> 搬到 </div> 前。"""
+                def _reorder_section(m):
+                    section = m.group(0)
+                    # 提取所有 chart-wrapper 块
+                    charts = re.findall(
+                        r'<div class="chart-wrapper">.*?</div>\s*', section, flags=re.S
+                    )
+                    if not charts:
+                        return section
+                    # 移除原有的 chart-wrapper 块
+                    section_no_charts = re.sub(
+                        r'<div class="chart-wrapper">.*?</div>\s*', '', section, flags=re.S
+                    )
+                    # 在 </div> 前插入所有 chart-wrapper
+                    insert_pos = section_no_charts.rfind('</div>')
+                    if insert_pos == -1:
+                        return section
+                    charts_block = ''.join(charts)
+                    return (section_no_charts[:insert_pos] + charts_block
+                            + section_no_charts[insert_pos:])
+                return re.sub(
+                    r'<div class="section-card">.*?</div>',
+                    _reorder_section, html_text, flags=re.S
+                )
+
+            content = _move_charts_to_end(content)
             return content
-        return ""
-    except Exception as e:
-        print(f"报告生成异常: {e}")
-        return ""
+        except Exception as e:
+            print(f"报告生成异常: {e}")
+            return ""
+    return ""
 
 
 # ==========================================
