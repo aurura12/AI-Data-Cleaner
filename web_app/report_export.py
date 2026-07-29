@@ -86,23 +86,7 @@ def _load_kpi_stats(text_results_file):
     with open(text_results_file, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    kpi_stats = data.get("analysis_data", {}).get("kpi_stats", {})
-    if kpi_stats:
-        return kpi_stats
-
-    summary = data.get("summary_stats", {})
-    yield_stats = summary.get("eda_analysis", {}).get("yield_stats", {})
-    if not yield_stats:
-        return {}
-
-    total = yield_stats.get("total", 0)
-    return {
-        "pass_rate": yield_stats.get("pass_rate", 0) * 100,
-        "open_rate": (yield_stats.get("open_count", 0) / total * 100) if total > 0 else 0,
-        "severe_rate": (yield_stats.get("severe_count", 0) / total * 100) if total > 0 else 0,
-        "open_count": yield_stats.get("open_count", 0),
-        "severe_count": yield_stats.get("severe_count", 0),
-    }
+    return data.get("analysis_data", {}).get("kpi_stats", {})
 
 
 def _load_descriptive_html(text_results_file):
@@ -123,25 +107,48 @@ def _build_kpi_html(t, kpi_stats):
     if not kpi_stats:
         return ""
 
+    cards = []
+    # 良品率卡（有 pass_rate 时显示）
+    pass_rate = kpi_stats.get("pass_rate")
+    if pass_rate is not None:
+        pass_count = kpi_stats.get("pass_count", "")
+        cards.append(f"""
+            <div style="background:#e8f6fd; padding:15px; border-radius:8px; width:30%; min-width:220px; text-align:center;">
+                <div style="font-weight:bold; margin-bottom:5px;">{t.get('pdf_yield', '整体良品率')}</div>
+                <div style="color:#3498db; font-size:24px; font-weight:bold;">{pass_rate:.1f}%</div>
+                <div style="color:#666; font-size:12px; margin-top:5px;">{t.get('pdf_baseline', '基准线')}</div>
+            </div>
+        """)
+    # 不合格率卡（有 fail_rate 时显示）
+    fail_rate = kpi_stats.get("fail_rate")
+    if fail_rate is not None:
+        fail_count = kpi_stats.get("fail_count", "")
+        cards.append(f"""
+            <div style="background:#fdecec; padding:15px; border-radius:8px; width:30%; min-width:220px; text-align:center;">
+                <div style="font-weight:bold; margin-bottom:5px;">{t.get('pdf_open_fail', '不合格率')}</div>
+                <div style="color:#e74c3c; font-size:24px; font-weight:bold;">{fail_rate:.1f}%</div>
+                <div style="color:#666; font-size:12px; margin-top:5px;">{t.get('pdf_count', '数量: ')}{kpi_stats.get('fail_count', 0)}</div>
+            </div>
+        """)
+    # 样本总数卡（总有）
+    total = kpi_stats.get("total", 0)
+    if total:
+        cards.append(f"""
+            <div style="background:#fef6e4; padding:15px; border-radius:8px; width:30%; min-width:220px; text-align:center;">
+                <div style="font-weight:bold; margin-bottom:5px;">{t.get('pdf_count', '样本总数')}</div>
+                <div style="color:#f39c12; font-size:24px; font-weight:bold;">{total}</div>
+                <div style="color:#666; font-size:12px; margin-top:5px;">{t.get('pdf_baseline', '全量数据')}</div>
+            </div>
+        """)
+
+    if not cards:
+        return ""
+
     return f"""
     <div class="section-card">
         <h3>{t.get('pdf_sec_1', '1. 核心指标概览')}</h3>
         <div style="display:flex; justify-content:space-around; gap:20px; flex-wrap:wrap; margin-top:20px;">
-            <div style="background:#e8f6fd; padding:15px; border-radius:8px; width:30%; min-width:220px; text-align:center;">
-                <div style="font-weight:bold; margin-bottom:5px;">{t.get('pdf_yield', '整体良品率')}</div>
-                <div style="color:#3498db; font-size:24px; font-weight:bold;">{kpi_stats.get('pass_rate', 0):.1f}%</div>
-                <div style="color:#666; font-size:12px; margin-top:5px;">{t.get('pdf_baseline', '基准线')}</div>
-            </div>
-            <div style="background:#fdecec; padding:15px; border-radius:8px; width:30%; min-width:220px; text-align:center;">
-                <div style="font-weight:bold; margin-bottom:5px;">{t.get('pdf_open_fail', '不合格率')}</div>
-                <div style="color:#e74c3c; font-size:24px; font-weight:bold;">{kpi_stats.get('open_rate', 0):.1f}%</div>
-                <div style="color:#666; font-size:12px; margin-top:5px;">{t.get('pdf_count', '数量: ')}{kpi_stats.get('open_count', 0)}</div>
-            </div>
-            <div style="background:#fef6e4; padding:15px; border-radius:8px; width:30%; min-width:220px; text-align:center;">
-                <div style="font-weight:bold; margin-bottom:5px;">{t.get('pdf_severe_fail', '严重缺陷率')}</div>
-                <div style="color:#f39c12; font-size:24px; font-weight:bold;">{kpi_stats.get('severe_rate', 0):.1f}%</div>
-                <div style="color:#666; font-size:12px; margin-top:5px;">{t.get('pdf_count', '数量: ')}{kpi_stats.get('severe_count', 0)}</div>
-            </div>
+            {''.join(cards)}
         </div>
     </div>
     """
@@ -315,7 +322,7 @@ def generate_full_report_html(t):
     <html>
     <head>
         <meta charset="UTF-8">
-        <title>{t.get('html_title', '半导体器件生产助手 - 工艺优化全景报告')}</title>
+        <title>{t.get('html_title', '数据分析全景报告')}</title>
         <style>
             body {{ font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f4f6f9; }}
             h1, h2, h3 {{ color: #2c3e50; }}
@@ -332,7 +339,7 @@ def generate_full_report_html(t):
         </style>
     </head>
     <body>
-        <h1>📋 {t.get('html_title', '半导体器件生产助手 - 工艺优化全景报告')}</h1>
+        <h1>📋 {t.get('html_title', '数据分析全景报告')}</h1>
         <p style="text-align:center; color:#666;">{t.get('pdf_date', '生成日期: ')}{pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}</p>
 
         <h2>{t.get('html_sec_1', '第一部分：描述性统计分析')}</h2>
@@ -341,11 +348,11 @@ def generate_full_report_html(t):
         <h2>{t.get('html_sec_2', '第二部分：深度挖掘与归因分析')}</h2>
         {deep_mining_html}
 
-        <h2>{t.get('html_sec_3', '第三部分：总结与工艺优化建议')}</h2>
+        <h2>{t.get('html_sec_3', '第三部分：总结与优化建议')}</h2>
         {suggestions_html}
 
         <div style="text-align:center; margin-top:50px; color:#999; font-size:12px;">
-            Generated by AI Semiconductor Device Production Assistant
+            Generated by Data Analysis Report
         </div>
     </body>
     </html>
@@ -542,45 +549,58 @@ def generate_full_report_pdf(t):
     text_results_file = os.path.join(output_dir, "ai_text_analysis_results.json")
     kpi_stats = _load_kpi_stats(text_results_file)
 
-    story.append(Paragraph(t.get("pdf_title", "半导体器件生产助手 - 工艺优化全景报告"), styles["CN_Title"]))
+    story.append(Paragraph(t.get("pdf_title", "数据分析全景报告"), styles["CN_Title"]))
     story.append(Paragraph(f"{t.get('pdf_date', '生成日期: ')}{pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}", styles["CN_Normal"]))
     story.append(Spacer(1, 20))
 
     story.append(Paragraph(t.get("pdf_sec_1", "1. 核心指标概览"), styles["CN_Heading1"]))
     if kpi_stats:
-        table_data = [
-            [
-                Paragraph(f"<b>{t.get('pdf_yield', '整体良品率')}</b>", styles["CN_Normal"]),
-                Paragraph(f"<b>{t.get('pdf_open_fail', '不合格率')}</b>", styles["CN_Normal"]),
-                Paragraph(f"<b>{t.get('pdf_severe_fail', '严重缺陷率')}</b>", styles["CN_Normal"]),
-            ],
-            [
-                Paragraph(f"<font color='#3498db' size=14><b>{kpi_stats.get('pass_rate', 0):.1f}%</b></font>", styles["CN_Normal"]),
-                Paragraph(f"<font color='#e74c3c' size=14><b>{kpi_stats.get('open_rate', 0):.1f}%</b></font>", styles["CN_Normal"]),
-                Paragraph(f"<font color='#f39c12' size=14><b>{kpi_stats.get('severe_rate', 0):.1f}%</b></font>", styles["CN_Normal"]),
-            ],
-            [
-                Paragraph(t.get("pdf_baseline", "基准线"), styles["CN_Normal"]),
-                Paragraph(f"{t.get('pdf_count', '数量: ')}{kpi_stats.get('open_count', 0)}", styles["CN_Normal"]),
-                Paragraph(f"{t.get('pdf_count', '数量: ')}{kpi_stats.get('severe_count', 0)}", styles["CN_Normal"]),
-            ],
-        ]
-        kpi_table = Table(table_data, colWidths=[150, 150, 150])
-        kpi_table.setStyle(
-            TableStyle(
-                [
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#e8f6fd")),
-                    ("BACKGROUND", (1, 0), (1, -1), colors.HexColor("#fdecec")),
-                    ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#fef6e4")),
-                    ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
-                    ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
-                    ("PADDING", (0, 0), (-1, -1), 12),
-                ]
+        # 动态构建 KPI 表格：只显示有数据的指标列
+        kpi_rows = []
+        headers = []
+        values = []
+        footers = []
+
+        pass_rate = kpi_stats.get("pass_rate")
+        if pass_rate is not None:
+            headers.append(Paragraph(f"<b>{t.get('pdf_yield', '整体良品率')}</b>", styles["CN_Normal"]))
+            values.append(Paragraph(f"<font color='#3498db' size=14><b>{pass_rate:.1f}%</b></font>", styles["CN_Normal"]))
+            footers.append(Paragraph(t.get("pdf_baseline", "基准线"), styles["CN_Normal"]))
+
+        fail_rate = kpi_stats.get("fail_rate")
+        if fail_rate is not None:
+            headers.append(Paragraph(f"<b>{t.get('pdf_open_fail', '不合格率')}</b>", styles["CN_Normal"]))
+            values.append(Paragraph(f"<font color='#e74c3c' size=14><b>{fail_rate:.1f}%</b></font>", styles["CN_Normal"]))
+            footers.append(Paragraph(f"{t.get('pdf_count', '数量: ')}{kpi_stats.get('fail_count', 0)}", styles["CN_Normal"]))
+
+        total = kpi_stats.get("total", 0)
+        if total:
+            headers.append(Paragraph(f"<b>{t.get('pdf_count', '样本总数')}</b>", styles["CN_Normal"]))
+            values.append(Paragraph(f"<font color='#f39c12' size=14><b>{total}</b></font>", styles["CN_Normal"]))
+            footers.append(Paragraph(t.get("pdf_baseline", "全量数据"), styles["CN_Normal"]))
+
+        if headers:
+            table_data = [headers, values, footers]
+            col_width = 450 // len(headers)
+            kpi_table = Table(table_data, colWidths=[col_width] * len(headers))
+            kpi_table.setStyle(
+                TableStyle(
+                    [
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("PADDING", (0, 0), (-1, -1), 12),
+                        ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+                        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+                    ]
+                )
             )
-        )
-        story.append(kpi_table)
+            # 给每列上色
+            bg_colors = [colors.HexColor("#e8f6fd"), colors.HexColor("#fdecec"), colors.HexColor("#fef6e4")]
+            for i in range(len(headers)):
+                kpi_table.setStyle(TableStyle([
+                    ("BACKGROUND", (i, 0), (i, -1), bg_colors[i % len(bg_colors)]),
+                ]))
+            story.append(kpi_table)
     else:
         story.append(Paragraph(t.get("pdf_no_data", "暂无核心指标数据"), styles["CN_Normal"]))
     story.append(Spacer(1, 20))
@@ -636,7 +656,7 @@ def generate_full_report_pdf(t):
         story.append(Paragraph(t.get("html_no_mining", "暂无深度挖掘结果。"), styles["CN_Normal"]))
 
     story.append(PageBreak())
-    story.append(Paragraph(t.get("html_sec_3", "第三部分：总结与工艺优化建议"), styles["CN_Heading1"]))
+    story.append(Paragraph(t.get("html_sec_3", "第三部分：总结与优化建议"), styles["CN_Heading1"]))
     suggestions = st.session_state.get("final_suggestions", {}).get("suggestions", [])
     if suggestions:
         for sug in suggestions:
@@ -716,7 +736,7 @@ def render_download_section(t):
                 st.download_button(
                 label=t.get("dl_down_html", "📥 下载 HTML"),
                 data=st.session_state["full_report_html_bytes"],
-                file_name="Semiconductor_Analysis_Report.html",
+                file_name="Data_Analysis_Report.html",
                 mime="text/html",
                 use_container_width=True,
             )
@@ -736,7 +756,7 @@ def render_download_section(t):
                 st.download_button(
                     label=t.get("dl_down_pdf", "📥 下载 PDF"),
                     data=st.session_state["full_report_pdf_bytes"],
-                    file_name="Semiconductor_Analysis_Report.pdf",
+                    file_name="Data_Analysis_Report.pdf",
                     mime="application/pdf",
                     use_container_width=True,
                 )
